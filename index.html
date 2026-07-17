@@ -155,10 +155,18 @@
   #itinerary-toolbar .ql-picker-label.ql-active,
   #itinerary-toolbar .ql-picker-item.ql-selected { color: var(--gold); }
   #bookmark-btn {
-    background: transparent; border: none; cursor: pointer; color: var(--paper);
-    font-size: 13px; padding: 4px 8px; border-radius: 4px;
+    background: transparent; border: 1px solid var(--line); cursor: pointer; color: var(--paper);
+    font-size: 12px; padding: 4px 10px; border-radius: 6px; white-space: nowrap;
+    width: auto; height: auto; display: inline-flex; align-items: center; margin-left: 6px;
   }
-  #bookmark-btn:hover { color: var(--gold); }
+  #bookmark-btn:hover { color: var(--gold); border-color: var(--gold); }
+
+  .day-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+  .day-tabs .day-tab {
+    background: var(--bg-softer); border: 1px solid var(--line); color: rgba(246,243,234,0.7);
+    padding: 7px 14px; border-radius: 16px; cursor: pointer; font-size: 12px; white-space: nowrap;
+  }
+  .day-tabs .day-tab.active { background: var(--teal); color: var(--paper); border-color: var(--teal); font-weight: 600; }
 
   #itinerary-editor.ql-container.ql-snow {
     background: var(--bg-softer);
@@ -281,11 +289,12 @@
     <div id="trip-sub-itinerary" class="trip-subview active">
       <div class="panel">
         <h2>行程規劃</h2>
+        <div id="itinerary-day-tabs" class="day-tabs"></div>
         <div id="itinerary-editor-wrap">
           <div id="itinerary-editor"></div>
         </div>
         <div class="form-actions" style="margin-top:14px;">
-          <button class="primary" id="save-itinerary-btn">儲存行程規劃</button>
+          <button class="primary" id="save-itinerary-btn">儲存這一天的行程</button>
         </div>
         <div class="status-line" id="itinerary-status"></div>
       </div>
@@ -312,25 +321,25 @@
           <label class="field">日期<input type="date" id="expense-date" /></label>
           <label class="field">類別<input type="text" id="expense-category" placeholder="交通/住宿/餐飲..." /></label>
           <label class="field">說明<input type="text" id="expense-desc" placeholder="說明" /></label>
-        <label class="field">金額<input type="number" id="expense-amount" placeholder="0" /></label>
-        <label class="field">幣別
-          <select id="expense-currency">
-            <option value="TWD">TWD</option>
-            <option value="JPY">JPY</option>
-            <option value="USD">USD</option>
-            <option value="EUR">EUR</option>
-            <option value="KRW">KRW</option>
-          </select>
-        </label>
+          <label class="field">金額<input type="number" id="expense-amount" placeholder="0" /></label>
+          <label class="field">幣別
+            <select id="expense-currency">
+              <option value="TWD">TWD</option>
+              <option value="JPY">JPY</option>
+              <option value="USD">USD</option>
+              <option value="EUR">EUR</option>
+              <option value="KRW">KRW</option>
+            </select>
+          </label>
+        </div>
+        <button class="primary" id="add-expense-btn">新增費用</button>
+        <table style="margin-top:16px;">
+          <thead><tr><th>日期</th><th>類別</th><th>說明</th><th>金額</th><th></th></tr></thead>
+          <tbody id="expenses-tbody"></tbody>
+        </table>
+        <div id="expenses-total"></div>
+        <div class="empty" id="expenses-empty" style="display:none;">還沒有費用紀錄。</div>
       </div>
-      <button class="primary" id="add-expense-btn">新增費用</button>
-      <table style="margin-top:16px;">
-        <thead><tr><th>日期</th><th>類別</th><th>說明</th><th>金額</th><th></th></tr></thead>
-        <tbody id="expenses-tbody"></tbody>
-      </table>
-      <div id="expenses-total"></div>
-      <div class="empty" id="expenses-empty" style="display:none;">還沒有費用紀錄。</div>
-    </div>
     </div>
 
     <div id="trip-sub-documents" class="trip-subview">
@@ -393,6 +402,8 @@
   let userIsAdmin = false;
   let currentTripId = null;
   let quillItinerary = null;
+  let itineraryDayContents = {};
+  let currentItineraryDate = null;
 
   function initQuillItinerary() {
     const toolbarOptions = [
@@ -595,6 +606,71 @@
     }
   }
 
+  function computeDateRange(start, end) {
+    const days = [];
+    if (!start) return days;
+    let cur = new Date(start + "T00:00:00");
+    const last = new Date((end || start) + "T00:00:00");
+    if (isNaN(cur) || isNaN(last)) return days;
+    while (cur <= last) {
+      const y = cur.getFullYear();
+      const m = String(cur.getMonth() + 1).padStart(2, "0");
+      const d = String(cur.getDate()).padStart(2, "0");
+      days.push(`${y}-${m}-${d}`);
+      cur.setDate(cur.getDate() + 1);
+    }
+    return days;
+  }
+
+  function renderDayTabs(days) {
+    const container = document.getElementById("itinerary-day-tabs");
+    container.innerHTML = "";
+    days.forEach((date, idx) => {
+      const btn = document.createElement("button");
+      btn.className = "day-tab";
+      btn.dataset.date = date;
+      const mmdd = date.slice(5).replace("-", "/");
+      btn.textContent = `第${idx + 1}天 ${mmdd}`;
+      btn.addEventListener("click", () => switchItineraryDay(date));
+      container.appendChild(btn);
+    });
+  }
+
+  async function saveCurrentDayContent(silent) {
+    if (!currentItineraryDate || !currentTripId) return;
+    const html = quillItinerary.root.innerHTML;
+    itineraryDayContents[currentItineraryDate] = html;
+    const statusEl = document.getElementById("itinerary-status");
+    if (!silent) statusEl.textContent = "儲存中...";
+    try {
+      await apiFetch(`/api/trips/${currentTripId}/itinerary-days/${currentItineraryDate}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: html }),
+      });
+      if (!silent) statusEl.textContent = "已儲存";
+    } catch (err) {
+      statusEl.textContent = "儲存失敗:" + err.message;
+    }
+  }
+
+  async function switchItineraryDay(date) {
+    if (currentItineraryDate && currentItineraryDate !== date) {
+      await saveCurrentDayContent(true);
+    }
+    currentItineraryDate = date;
+    document.querySelectorAll(".day-tab").forEach((b) => b.classList.toggle("active", b.dataset.date === date));
+    const content = itineraryDayContents[date] || "";
+    if (content && content.includes("<")) {
+      quillItinerary.root.innerHTML = content;
+    } else {
+      quillItinerary.setText(content || "");
+    }
+    document.getElementById("itinerary-status").textContent = "";
+  }
+
+  document.getElementById("save-itinerary-btn").addEventListener("click", () => saveCurrentDayContent(false));
+
   // ---------- 行程詳細 ----------
   document.getElementById("back-to-trips").addEventListener("click", () => switchView("trips"));
 
@@ -629,13 +705,19 @@
     document.getElementById("detail-title").textContent = `${t.country} · ${t.location}`;
     document.getElementById("detail-sub").textContent = t.date_end ? `${t.date_start} ~ ${t.date_end}` : t.date_start;
 
-    const itinerary = t.itinerary || "";
-    if (itinerary.includes("<") && itinerary.includes(">")) {
-      quillItinerary.root.innerHTML = itinerary;
-    } else {
-      // 相容舊版存的純文字行程規劃,把換行轉成段落
-      quillItinerary.setText(itinerary);
-    }
+    const days = computeDateRange(t.date_start, t.date_end);
+    renderDayTabs(days);
+
+    itineraryDayContents = {};
+    currentItineraryDate = null;
+    try {
+      const idata = await apiFetch(`/api/trips/${tripId}/itinerary-days`);
+      for (const row of idata.days || []) {
+        itineraryDayContents[row.day_date] = row.content;
+      }
+    } catch (err) { /* 沒有資料時忽略即可 */ }
+
+    if (days.length > 0) await switchItineraryDay(days[0]);
     document.getElementById("itinerary-status").textContent = "";
 
     document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
@@ -643,21 +725,6 @@
 
     switchTripSubview("itinerary");
   }
-
-  document.getElementById("save-itinerary-btn").addEventListener("click", async () => {
-    const statusEl = document.getElementById("itinerary-status");
-    statusEl.textContent = "儲存中...";
-    try {
-      await apiFetch(`/api/trips/${currentTripId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ itinerary: quillItinerary.root.innerHTML }),
-      });
-      statusEl.textContent = "已儲存";
-    } catch (err) {
-      statusEl.textContent = "儲存失敗:" + err.message;
-    }
-  });
 
   // ---- 相簿 ----
   async function loadMedia() {
