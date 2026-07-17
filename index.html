@@ -3,22 +3,22 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>家族旅遊相簿</title>
+<title>家族旅遊行程</title>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   :root {
     --bg: #0f2d2a;
     --bg-soft: #163b36;
+    --bg-softer: #1c4841;
     --paper: #f6f3ea;
     --ink: #14201e;
     --gold: #e0a94a;
     --teal: #2f6f64;
+    --danger: #c96a5a;
     --line: rgba(230, 224, 208, 0.16);
-    --radius: 14px;
+    --radius: 12px;
   }
-
   * { box-sizing: border-box; }
-
   body {
     margin: 0;
     font-family: "Helvetica Neue", "Noto Sans TC", -apple-system, sans-serif;
@@ -26,368 +26,740 @@
     color: var(--paper);
     min-height: 100vh;
   }
+  a { color: var(--gold); }
 
   header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 22px 28px;
+    padding: 18px 28px;
     border-bottom: 1px solid var(--line);
+    flex-wrap: wrap;
+    gap: 12px;
   }
+  .brand { display: flex; align-items: baseline; gap: 10px; }
+  .brand .mark { font-family: Georgia, "Noto Serif TC", serif; font-size: 24px; color: var(--gold); }
+  .brand .sub { font-size: 12px; color: rgba(246,243,234,0.5); letter-spacing: 1px; }
 
-  .brand {
-    display: flex;
-    align-items: baseline;
-    gap: 10px;
-  }
-
-  .brand .mark {
-    font-family: Georgia, "Noto Serif TC", serif;
-    font-size: 26px;
-    letter-spacing: 0.5px;
-    color: var(--gold);
-  }
-
-  .brand .sub {
+  nav { display: flex; gap: 6px; }
+  nav button {
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--paper);
+    padding: 8px 16px;
+    border-radius: 8px;
+    cursor: pointer;
     font-size: 13px;
-    color: rgba(246, 243, 234, 0.55);
-    letter-spacing: 1px;
   }
+  nav button.active { background: var(--gold); color: #201404; border-color: var(--gold); font-weight: 600; }
 
-  #user-box { display: flex; align-items: center; gap: 12px; }
-  #user-box img { width: 32px; height: 32px; border-radius: 50%; }
-  #user-box span { font-size: 14px; opacity: 0.85; }
+  #user-box { display: flex; align-items: center; gap: 10px; }
+  #user-box img { width: 28px; height: 28px; border-radius: 50%; }
+  #user-box span { font-size: 13px; opacity: 0.85; }
+  #signout-btn { background: transparent; border: 1px solid var(--line); color: var(--paper); padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; }
 
-  main {
-    max-width: 1100px;
-    margin: 0 auto;
-    padding: 40px 28px 80px;
-  }
+  main { max-width: 1100px; margin: 0 auto; padding: 32px 24px 80px; }
 
-  #gate {
-    text-align: center;
-    padding: 120px 20px;
-  }
-  #gate h1 {
-    font-family: Georgia, "Noto Serif TC", serif;
-    font-size: 34px;
-    color: var(--gold);
-    margin-bottom: 8px;
-  }
+  #gate { text-align: center; padding: 120px 20px; }
+  #gate h1 { font-family: Georgia, "Noto Serif TC", serif; font-size: 32px; color: var(--gold); margin-bottom: 8px; }
   #gate p { color: rgba(246,243,234,0.6); margin-bottom: 28px; }
 
   .panel {
     background: var(--bg-soft);
     border: 1px solid var(--line);
     border-radius: var(--radius);
-    padding: 24px;
-    margin-bottom: 28px;
+    padding: 22px;
+    margin-bottom: 24px;
   }
+  .panel h2 { font-family: Georgia, "Noto Serif TC", serif; font-size: 17px; margin: 0 0 16px; color: var(--gold); font-weight: normal; display: flex; align-items: center; justify-content: space-between; }
 
-  .panel h2 {
-    font-family: Georgia, "Noto Serif TC", serif;
-    font-size: 18px;
-    margin: 0 0 16px;
-    color: var(--gold);
-    font-weight: normal;
+  button.primary {
+    background: var(--gold); color: #201404; border: none;
+    padding: 9px 18px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer;
   }
-
-  #upload-row {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    flex-wrap: wrap;
+  button.primary:hover { filter: brightness(1.08); }
+  button.ghost {
+    background: transparent; border: 1px solid var(--line); color: var(--paper);
+    padding: 8px 14px; border-radius: 8px; font-size: 13px; cursor: pointer;
   }
-
-  input[type="file"] {
-    color: rgba(246,243,234,0.8);
-    font-size: 13px;
-  }
-
-  button {
-    background: var(--gold);
-    color: #201404;
-    border: none;
-    padding: 10px 20px;
-    border-radius: 8px;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-  }
+  button.danger { background: transparent; border: 1px solid var(--danger); color: var(--danger); padding: 6px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; }
   button:disabled { opacity: 0.5; cursor: not-allowed; }
-  button:hover:not(:disabled) { filter: brightness(1.08); }
 
-  .progress-wrap {
-    flex: 1 1 220px;
-    height: 8px;
-    background: rgba(255,255,255,0.08);
-    border-radius: 4px;
-    overflow: hidden;
-    min-width: 160px;
+  input[type=text], input[type=date], input[type=number], textarea, select {
+    background: var(--bg-softer); border: 1px solid var(--line); color: var(--paper);
+    padding: 8px 10px; border-radius: 6px; font-size: 13px; font-family: inherit;
   }
-  .progress-bar {
-    height: 100%;
-    width: 0%;
-    background: var(--teal);
-    transition: width 0.15s ease;
-  }
+  textarea { width: 100%; min-height: 90px; resize: vertical; }
+  label.field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: rgba(246,243,234,0.6); }
 
-  #status-msg { font-size: 13px; color: rgba(246,243,234,0.6); margin-top: 10px; min-height: 18px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); }
+  th { color: rgba(246,243,234,0.5); font-weight: 500; font-size: 12px; }
+  tr.clickable { cursor: pointer; }
+  tr.clickable:hover td { background: rgba(255,255,255,0.03); }
 
-  #gallery {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-    gap: 16px;
-  }
+  .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px,1fr)); gap: 12px; margin-bottom: 14px; }
+  .form-actions { display: flex; gap: 10px; }
 
-  .card {
-    background: var(--bg-soft);
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    overflow: hidden;
-    text-decoration: none;
-    color: inherit;
-    display: flex;
-    flex-direction: column;
-  }
-  .thumb {
-    width: 100%;
-    aspect-ratio: 4 / 3;
-    background: #0a1d1a;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: rgba(246,243,234,0.35);
-    font-size: 12px;
-  }
-  .thumb img { width: 100%; height: 100%; object-fit: cover; }
-  .card .name {
-    padding: 8px 10px;
-    font-size: 12px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
+  #gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 14px; }
+  .media-card { background: var(--bg-softer); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .media-thumb { width: 100%; aspect-ratio: 4/3; background: #0a1d1a; display: flex; align-items: center; justify-content: center; color: rgba(246,243,234,0.35); font-size: 12px; }
+  .media-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .media-info { padding: 8px 10px; font-size: 12px; }
+  .media-info input { width: 100%; margin-bottom: 6px; font-size: 12px; padding: 5px 6px; }
+  .media-actions { display: flex; gap: 8px; margin-top: 4px; }
+  .media-actions a, .media-actions button { font-size: 11px; }
 
-  #empty-state {
-    text-align: center;
-    padding: 40px 20px;
-    color: rgba(246,243,234,0.4);
-    font-size: 14px;
-  }
+  .checklist-item { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .checklist-item input[type=checkbox] { width: 18px; height: 18px; }
+  .checklist-item.done span { text-decoration: line-through; opacity: 0.5; }
+  .checklist-item span { flex: 1; font-size: 14px; }
+
+  .progress-wrap { flex: 1 1 200px; height: 8px; background: rgba(255,255,255,0.08); border-radius: 4px; overflow: hidden; }
+  .progress-bar { height: 100%; width: 0%; background: var(--teal); transition: width 0.15s ease; }
+  .status-line { font-size: 12px; color: rgba(246,243,234,0.6); margin-top: 8px; min-height: 16px; }
+
+  .empty { text-align: center; padding: 30px; color: rgba(246,243,234,0.4); font-size: 13px; }
+  .back-link { display: inline-block; margin-bottom: 14px; font-size: 13px; cursor: pointer; color: rgba(246,243,234,0.6); }
+  .trip-title { font-family: Georgia, "Noto Serif TC", serif; font-size: 26px; color: var(--gold); margin: 0 0 4px; }
+  .trip-sub { font-size: 13px; color: rgba(246,243,234,0.5); margin-bottom: 20px; }
+  .total-line { text-align: right; font-size: 13px; color: var(--gold); margin-top: 8px; }
+  .view { display: none; }
+  .view.active { display: block; }
+  .doc-type-tag { display: inline-block; background: var(--teal); color: var(--paper); font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-right: 8px; }
 </style>
 </head>
 <body>
 
 <header>
   <div class="brand">
-    <span class="mark">家族旅遊相簿</span>
+    <span class="mark">家族旅遊行程</span>
     <span class="sub">FAMILY TRAVEL ARCHIVE</span>
   </div>
+  <nav id="main-nav" style="display:none;">
+    <button data-view="trips" class="active">旅遊行程</button>
+    <button data-view="checklist">待辦事項</button>
+    <button data-view="logs" id="nav-logs" style="display:none;">Log</button>
+  </nav>
   <div id="user-box" style="display:none;">
     <img id="user-avatar" src="" alt="" />
     <span id="user-name"></span>
-    <button id="signout-btn" style="background:transparent;border:1px solid var(--line);color:var(--paper);">登出</button>
+    <button id="signout-btn">登出</button>
   </div>
 </header>
 
 <main>
   <div id="gate">
     <h1>只限家庭成員</h1>
-    <p>請使用授權的 Google 帳號登入,才能瀏覽與上傳照片影片。</p>
+    <p>請使用授權的 Google 帳號登入,才能瀏覽與編輯家族旅遊紀錄。</p>
     <div id="g_id_signin"></div>
     <p id="auth-error" style="color:#e08a8a; margin-top:20px;"></p>
   </div>
 
-  <div id="app" style="display:none;">
+  <!-- 旅遊行程 列表 -->
+  <div id="view-trips" class="view">
     <div class="panel">
-      <h2>上傳新檔案</h2>
-      <div id="upload-row">
-        <input type="file" id="file-input" multiple />
-        <button id="upload-btn">開始上傳</button>
-        <div class="progress-wrap"><div class="progress-bar" id="progress-bar"></div></div>
+      <h2>
+        新增行程
+        <button class="ghost" id="toggle-new-trip">+ 新增</button>
+      </h2>
+      <div id="new-trip-form" style="display:none;">
+        <div class="form-grid">
+          <label class="field">開始日期
+            <input type="date" id="trip-date-start" />
+          </label>
+          <label class="field">結束日期
+            <input type="date" id="trip-date-end" />
+          </label>
+          <label class="field">國家
+            <input type="text" id="trip-country" placeholder="例如:日本" />
+          </label>
+          <label class="field">地點
+            <input type="text" id="trip-location" placeholder="例如:東京" />
+          </label>
+        </div>
+        <label class="field" style="margin-bottom:12px;">行程規劃(選填)
+          <textarea id="trip-itinerary" placeholder="Day1: ... Day2: ..."></textarea>
+        </label>
+        <div class="form-actions">
+          <button class="primary" id="create-trip-btn">建立行程</button>
+        </div>
+        <div class="status-line" id="trip-create-status"></div>
       </div>
-      <div id="status-msg"></div>
     </div>
 
     <div class="panel">
-      <h2>相簿</h2>
+      <h2>所有行程</h2>
+      <table id="trips-table">
+        <thead>
+          <tr><th>日期</th><th>國家</th><th>地點</th></tr>
+        </thead>
+        <tbody id="trips-tbody"></tbody>
+      </table>
+      <div class="empty" id="trips-empty" style="display:none;">還沒有任何行程,新增第一個吧。</div>
+    </div>
+  </div>
+
+  <!-- 行程詳細頁 -->
+  <div id="view-trip-detail" class="view">
+    <span class="back-link" id="back-to-trips">← 回到行程列表</span>
+    <h1 class="trip-title" id="detail-title"></h1>
+    <div class="trip-sub" id="detail-sub"></div>
+
+    <div class="panel">
+      <h2>行程規劃</h2>
+      <textarea id="detail-itinerary"></textarea>
+      <div class="form-actions" style="margin-top:10px;">
+        <button class="primary" id="save-itinerary-btn">儲存行程規劃</button>
+      </div>
+      <div class="status-line" id="itinerary-status"></div>
+    </div>
+
+    <div class="panel">
+      <h2>照片 / 影片</h2>
+      <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
+        <input type="file" id="media-file-input" multiple accept="image/*,video/*" />
+        <button class="primary" id="media-upload-btn">開始上傳</button>
+        <div class="progress-wrap"><div class="progress-bar" id="media-progress-bar"></div></div>
+      </div>
+      <div class="status-line" id="media-status"></div>
       <div id="gallery"></div>
-      <div id="empty-state" style="display:none;">目前還沒有照片或影片,上傳第一份回憶吧。</div>
+      <div class="empty" id="media-empty" style="display:none;">目前還沒有照片或影片。</div>
+    </div>
+
+    <div class="panel">
+      <h2>費用花費</h2>
+      <div class="form-grid">
+        <label class="field">日期<input type="date" id="expense-date" /></label>
+        <label class="field">類別<input type="text" id="expense-category" placeholder="交通/住宿/餐飲..." /></label>
+        <label class="field">說明<input type="text" id="expense-desc" placeholder="說明" /></label>
+        <label class="field">金額<input type="number" id="expense-amount" placeholder="0" /></label>
+        <label class="field">幣別
+          <select id="expense-currency">
+            <option value="TWD">TWD</option>
+            <option value="JPY">JPY</option>
+            <option value="USD">USD</option>
+            <option value="EUR">EUR</option>
+            <option value="KRW">KRW</option>
+          </select>
+        </label>
+      </div>
+      <button class="primary" id="add-expense-btn">新增費用</button>
+      <table style="margin-top:16px;">
+        <thead><tr><th>日期</th><th>類別</th><th>說明</th><th>金額</th><th></th></tr></thead>
+        <tbody id="expenses-tbody"></tbody>
+      </table>
+      <div id="expenses-total"></div>
+      <div class="empty" id="expenses-empty" style="display:none;">還沒有費用紀錄。</div>
+    </div>
+
+    <div class="panel">
+      <h2>其他文件(電子機票、飯店訂單等)</h2>
+      <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
+        <select id="doc-type-select">
+          <option value="機票">機票</option>
+          <option value="飯店">飯店</option>
+          <option value="保險">保險</option>
+          <option value="其他">其他</option>
+        </select>
+        <input type="file" id="doc-file-input" multiple />
+        <button class="primary" id="doc-upload-btn">上傳文件</button>
+        <div class="progress-wrap"><div class="progress-bar" id="doc-progress-bar"></div></div>
+      </div>
+      <div class="status-line" id="doc-status"></div>
+      <table>
+        <thead><tr><th>類型</th><th>檔名</th><th></th></tr></thead>
+        <tbody id="documents-tbody"></tbody>
+      </table>
+      <div class="empty" id="documents-empty" style="display:none;">還沒有上傳文件。</div>
+    </div>
+  </div>
+
+  <!-- 待辦事項 -->
+  <div id="view-checklist" class="view">
+    <div class="panel">
+      <h2>待辦事項</h2>
+      <div style="display:flex; gap:10px; margin-bottom:16px;">
+        <input type="text" id="checklist-input" placeholder="新增待辦事項..." style="flex:1;" />
+        <button class="primary" id="checklist-add-btn">新增</button>
+      </div>
+      <div id="checklist-list"></div>
+      <div class="empty" id="checklist-empty" style="display:none;">目前沒有待辦事項。</div>
+    </div>
+  </div>
+
+  <!-- Log(管理員) -->
+  <div id="view-logs" class="view">
+    <div class="panel">
+      <h2>操作紀錄(僅管理員可見)</h2>
+      <table>
+        <thead><tr><th>時間</th><th>使用者</th><th>動作</th><th>細節</th></tr></thead>
+        <tbody id="logs-tbody"></tbody>
+      </table>
+      <div class="empty" id="logs-empty" style="display:none;">目前沒有紀錄。</div>
     </div>
   </div>
 </main>
 
 <script>
-  // ====== 設定區:換成你自己的參數 ======
+  // ====== 設定區 ======
   const GOOGLE_CLIENT_ID = "583386271797-l66a91s2og0bklu05tgo3nt81bl8ved2.apps.googleusercontent.com";
   const WORKER_URL = "https://family-drive-site.kennychuang.workers.dev";
-  // =====================================
+  // =====================
 
   let idToken = null;
+  let userIsAdmin = false;
+  let currentTripId = null;
 
   function initGoogleSignIn() {
-    google.accounts.id.initialize({
-      client_id: GOOGLE_CLIENT_ID,
-      callback: handleCredentialResponse,
-    });
-    google.accounts.id.renderButton(
-      document.getElementById("g_id_signin"),
-      { theme: "outline", size: "large", text: "signin_with" }
-    );
+    google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: handleCredentialResponse });
+    google.accounts.id.renderButton(document.getElementById("g_id_signin"), { theme: "outline", size: "large", text: "signin_with" });
   }
   window.onload = initGoogleSignIn;
+
+  async function apiFetch(path, options = {}) {
+    const headers = options.headers || {};
+    if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
+    const res = await fetch(`${WORKER_URL}${path}`, { ...options, headers });
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || "發生錯誤");
+    return data;
+  }
 
   async function handleCredentialResponse(response) {
     idToken = response.credential;
     const errorEl = document.getElementById("auth-error");
     errorEl.textContent = "";
-
     try {
-      const res = await fetch(`${WORKER_URL}/api/auth`, {
+      const data = await apiFetch("/api/auth", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id_token: idToken }),
       });
-      const data = await res.json();
-      if (!res.ok || !data.ok) {
-        throw new Error(data.error || "驗證失敗");
-      }
+      userIsAdmin = !!data.isAdmin;
 
       document.getElementById("gate").style.display = "none";
-      document.getElementById("app").style.display = "block";
+      document.getElementById("main-nav").style.display = "flex";
       document.getElementById("user-box").style.display = "flex";
       document.getElementById("user-name").textContent = data.name || data.email;
+      if (userIsAdmin) document.getElementById("nav-logs").style.display = "inline-block";
 
       const payload = JSON.parse(atob(idToken.split(".")[1]));
       document.getElementById("user-avatar").src = payload.picture || "";
 
-      loadGallery();
+      switchView("trips");
     } catch (err) {
-      errorEl.textContent = "無法登入:" + err.message + "(此帳號可能不在家庭白名單內)";
+      errorEl.textContent = "無法登入:" + err.message;
     }
   }
 
   document.getElementById("signout-btn").addEventListener("click", () => {
     idToken = null;
     google.accounts.id.disableAutoSelect();
-    document.getElementById("app").style.display = "none";
-    document.getElementById("user-box").style.display = "none";
-    document.getElementById("gate").style.display = "block";
+    location.reload();
   });
 
-  async function loadGallery() {
-    const gallery = document.getElementById("gallery");
-    const emptyState = document.getElementById("empty-state");
-    gallery.innerHTML = "";
-
-    const res = await fetch(`${WORKER_URL}/api/files`, {
-      headers: { Authorization: `Bearer ${idToken}` },
+  // ---------- 導覽切換 ----------
+  function switchView(name) {
+    document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
+    document.getElementById(`view-${name}`).classList.add("active");
+    document.querySelectorAll("#main-nav button[data-view]").forEach((b) => {
+      b.classList.toggle("active", b.dataset.view === name);
     });
-    const data = await res.json();
-    const files = data.files || [];
-
-    if (files.length === 0) {
-      emptyState.style.display = "block";
-      return;
-    }
-    emptyState.style.display = "none";
-
-    for (const f of files) {
-      const card = document.createElement("a");
-      card.className = "card";
-      card.href = f.webViewLink;
-      card.target = "_blank";
-      card.rel = "noopener";
-
-      const thumb = document.createElement("div");
-      thumb.className = "thumb";
-      if (f.thumbnailLink) {
-        const img = document.createElement("img");
-        img.src = f.thumbnailLink;
-        img.loading = "lazy";
-        thumb.appendChild(img);
-      } else {
-        thumb.textContent = f.mimeType && f.mimeType.startsWith("video") ? "影片" : "檔案";
-      }
-
-      const name = document.createElement("div");
-      name.className = "name";
-      name.textContent = f.name;
-
-      card.appendChild(thumb);
-      card.appendChild(name);
-      gallery.appendChild(card);
-    }
+    if (name === "trips") loadTrips();
+    if (name === "checklist") loadChecklist();
+    if (name === "logs") loadLogs();
   }
-
-  document.getElementById("upload-btn").addEventListener("click", async () => {
-    const input = document.getElementById("file-input");
-    const statusMsg = document.getElementById("status-msg");
-    const progressBar = document.getElementById("progress-bar");
-    const files = Array.from(input.files || []);
-
-    if (files.length === 0) {
-      statusMsg.textContent = "請先選擇檔案";
-      return;
-    }
-
-    for (const file of files) {
-      statusMsg.textContent = `準備上傳:${file.name}`;
-      progressBar.style.width = "0%";
-
-      try {
-        // 1. 跟後端要一個 Google Drive 的可續傳上傳網址
-        const initRes = await fetch(`${WORKER_URL}/api/upload-init`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${idToken}`,
-          },
-          body: JSON.stringify({
-            name: file.name,
-            mimeType: file.type || "application/octet-stream",
-            size: file.size,
-          }),
-        });
-        const initData = await initRes.json();
-        if (!initRes.ok || !initData.uploadUrl) {
-          throw new Error(initData.error || "無法建立上傳工作階段");
-        }
-
-        // 2. 直接把檔案傳到 Google Drive(不經過我們的後端,適合大檔案)
-        await uploadWithProgress(initData.uploadUrl, file, (pct) => {
-          progressBar.style.width = pct + "%";
-          statusMsg.textContent = `上傳中:${file.name}(${pct}%)`;
-        });
-
-        statusMsg.textContent = `完成:${file.name}`;
-      } catch (err) {
-        statusMsg.textContent = `上傳失敗(${file.name}):${err.message}`;
-      }
-    }
-
-    input.value = "";
-    loadGallery();
+  document.querySelectorAll("#main-nav button[data-view]").forEach((btn) => {
+    btn.addEventListener("click", () => switchView(btn.dataset.view));
   });
 
-  function uploadWithProgress(url, file, onProgress) {
+  function uploadWithProgress(url, file, mimeType, onProgress) {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open("PUT", url, true);
-      xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) {
-          onProgress(Math.round((e.loaded / e.total) * 100));
-        }
-      };
+      xhr.setRequestHeader("Content-Type", mimeType || "application/octet-stream");
+      xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100)); };
       xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) resolve();
+        if (xhr.status >= 200 && xhr.status < 300) resolve(JSON.parse(xhr.responseText));
         else reject(new Error(`Google Drive 回傳錯誤 (${xhr.status})`));
       };
       xhr.onerror = () => reject(new Error("網路錯誤"));
       xhr.send(file);
     });
+  }
+
+  // ---------- 旅遊行程列表 ----------
+  document.getElementById("toggle-new-trip").addEventListener("click", () => {
+    const form = document.getElementById("new-trip-form");
+    form.style.display = form.style.display === "none" ? "block" : "none";
+  });
+
+  document.getElementById("create-trip-btn").addEventListener("click", async () => {
+    const statusEl = document.getElementById("trip-create-status");
+    const dateStart = document.getElementById("trip-date-start").value;
+    const dateEnd = document.getElementById("trip-date-end").value;
+    const country = document.getElementById("trip-country").value.trim();
+    const location = document.getElementById("trip-location").value.trim();
+    const itinerary = document.getElementById("trip-itinerary").value;
+
+    if (!dateStart || !country || !location) {
+      statusEl.textContent = "請至少填寫開始日期、國家、地點";
+      return;
+    }
+    statusEl.textContent = "建立中...";
+    try {
+      await apiFetch("/api/trips", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dateStart, dateEnd, country, location, itinerary }),
+      });
+      statusEl.textContent = "建立完成";
+      document.getElementById("new-trip-form").style.display = "none";
+      ["trip-date-start","trip-date-end","trip-country","trip-location","trip-itinerary"].forEach(id => document.getElementById(id).value = "");
+      loadTrips();
+    } catch (err) {
+      statusEl.textContent = "建立失敗:" + err.message;
+    }
+  });
+
+  async function loadTrips() {
+    const tbody = document.getElementById("trips-tbody");
+    const emptyEl = document.getElementById("trips-empty");
+    tbody.innerHTML = "";
+    const data = await apiFetch("/api/trips");
+    const trips = data.trips || [];
+    emptyEl.style.display = trips.length === 0 ? "block" : "none";
+    for (const t of trips) {
+      const tr = document.createElement("tr");
+      tr.className = "clickable";
+      const dateRange = t.date_end ? `${t.date_start} ~ ${t.date_end}` : t.date_start;
+      tr.innerHTML = `<td>${dateRange}</td><td>${t.country}</td><td>${t.location}</td>`;
+      tr.addEventListener("click", () => openTrip(t.id));
+      tbody.appendChild(tr);
+    }
+  }
+
+  // ---------- 行程詳細 ----------
+  document.getElementById("back-to-trips").addEventListener("click", () => switchView("trips"));
+
+  async function openTrip(tripId) {
+    currentTripId = tripId;
+    const data = await apiFetch(`/api/trips/${tripId}`);
+    const t = data.trip;
+    document.getElementById("detail-title").textContent = `${t.country} · ${t.location}`;
+    document.getElementById("detail-sub").textContent = t.date_end ? `${t.date_start} ~ ${t.date_end}` : t.date_start;
+    document.getElementById("detail-itinerary").value = t.itinerary || "";
+
+    document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
+    document.getElementById("view-trip-detail").classList.add("active");
+
+    await loadMedia();
+    await loadExpenses();
+    await loadDocuments();
+  }
+
+  document.getElementById("save-itinerary-btn").addEventListener("click", async () => {
+    const statusEl = document.getElementById("itinerary-status");
+    statusEl.textContent = "儲存中...";
+    try {
+      await apiFetch(`/api/trips/${currentTripId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itinerary: document.getElementById("detail-itinerary").value }),
+      });
+      statusEl.textContent = "已儲存";
+    } catch (err) {
+      statusEl.textContent = "儲存失敗:" + err.message;
+    }
+  });
+
+  // ---- 相簿 ----
+  async function loadMedia() {
+    const gallery = document.getElementById("gallery");
+    const emptyEl = document.getElementById("media-empty");
+    gallery.innerHTML = "";
+    const data = await apiFetch(`/api/trips/${currentTripId}/media`);
+    const items = data.media || [];
+    emptyEl.style.display = items.length === 0 ? "block" : "none";
+
+    for (const m of items) {
+      const card = document.createElement("div");
+      card.className = "media-card";
+
+      const thumb = document.createElement("div");
+      thumb.className = "media-thumb";
+      if (m.thumbnail_link) {
+        const img = document.createElement("img");
+        img.src = m.thumbnail_link;
+        img.loading = "lazy";
+        thumb.appendChild(img);
+      } else {
+        thumb.textContent = (m.mime_type || "").startsWith("video") ? "影片" : "檔案";
+      }
+
+      const info = document.createElement("div");
+      info.className = "media-info";
+      const captionInput = document.createElement("input");
+      captionInput.type = "text";
+      captionInput.placeholder = "加上說明文字...";
+      captionInput.value = m.caption || "";
+      captionInput.addEventListener("change", async () => {
+        try {
+          await apiFetch(`/api/media/${m.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ caption: captionInput.value }),
+          });
+        } catch (err) { alert("更新說明失敗:" + err.message); }
+      });
+
+      const actions = document.createElement("div");
+      actions.className = "media-actions";
+      const downloadLink = document.createElement("a");
+      downloadLink.href = m.web_content_link || m.web_view_link || "#";
+      downloadLink.target = "_blank";
+      downloadLink.rel = "noopener";
+      downloadLink.textContent = "下載";
+      const deleteBtn = document.createElement("button");
+      deleteBtn.className = "danger";
+      deleteBtn.textContent = "刪除";
+      deleteBtn.addEventListener("click", async () => {
+        if (!confirm(`確定要刪除「${m.name}」嗎?這會同時刪除 Google Drive 上的檔案。`)) return;
+        try {
+          await apiFetch(`/api/media/${m.id}`, { method: "DELETE" });
+          loadMedia();
+        } catch (err) { alert("刪除失敗:" + err.message); }
+      });
+      actions.appendChild(downloadLink);
+      actions.appendChild(deleteBtn);
+
+      info.appendChild(captionInput);
+      info.appendChild(actions);
+      card.appendChild(thumb);
+      card.appendChild(info);
+      gallery.appendChild(card);
+    }
+  }
+
+  document.getElementById("media-upload-btn").addEventListener("click", async () => {
+    const input = document.getElementById("media-file-input");
+    const statusEl = document.getElementById("media-status");
+    const progressBar = document.getElementById("media-progress-bar");
+    const files = Array.from(input.files || []);
+    if (files.length === 0) { statusEl.textContent = "請先選擇檔案"; return; }
+
+    for (const file of files) {
+      statusEl.textContent = `準備上傳:${file.name}`;
+      progressBar.style.width = "0%";
+      try {
+        const initData = await apiFetch(`/api/trips/${currentTripId}/media/upload-init`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: file.name, mimeType: file.type, size: file.size }),
+        });
+        const driveFile = await uploadWithProgress(initData.uploadUrl, file, file.type, (pct) => {
+          progressBar.style.width = pct + "%";
+          statusEl.textContent = `上傳中:${file.name}(${pct}%)`;
+        });
+
+        await apiFetch(`/api/trips/${currentTripId}/media`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            driveFileId: driveFile.id, name: file.name, mimeType: file.type, size: file.size,
+            thumbnailLink: driveFile.thumbnailLink, webViewLink: driveFile.webViewLink, webContentLink: driveFile.webContentLink,
+          }),
+        });
+        statusEl.textContent = `完成:${file.name}`;
+      } catch (err) {
+        statusEl.textContent = `上傳失敗(${file.name}):${err.message}`;
+      }
+    }
+    input.value = "";
+    loadMedia();
+  });
+
+  // ---- 費用 ----
+  async function loadExpenses() {
+    const tbody = document.getElementById("expenses-tbody");
+    const emptyEl = document.getElementById("expenses-empty");
+    const totalEl = document.getElementById("expenses-total");
+    tbody.innerHTML = "";
+    const data = await apiFetch(`/api/trips/${currentTripId}/expenses`);
+    const items = data.expenses || [];
+    emptyEl.style.display = items.length === 0 ? "block" : "none";
+
+    const totals = {};
+    for (const e of items) {
+      totals[e.currency] = (totals[e.currency] || 0) + e.amount;
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td>${e.date || ""}</td><td>${e.category || ""}</td><td>${e.description || ""}</td><td>${e.amount} ${e.currency}</td><td></td>`;
+      const deleteBtn = document.createElement("button");
+      deleteBtn.className = "danger";
+      deleteBtn.textContent = "刪除";
+      deleteBtn.addEventListener("click", async () => {
+        await apiFetch(`/api/expenses/${e.id}`, { method: "DELETE" });
+        loadExpenses();
+      });
+      tr.lastElementChild.appendChild(deleteBtn);
+      tbody.appendChild(tr);
+    }
+    totalEl.innerHTML = Object.entries(totals).map(([cur, amt]) => `<div class="total-line">小計(${cur}):${amt}</div>`).join("");
+  }
+
+  document.getElementById("add-expense-btn").addEventListener("click", async () => {
+    const date = document.getElementById("expense-date").value;
+    const category = document.getElementById("expense-category").value;
+    const description = document.getElementById("expense-desc").value;
+    const amount = parseFloat(document.getElementById("expense-amount").value);
+    const currency = document.getElementById("expense-currency").value;
+    if (isNaN(amount)) { alert("請輸入金額"); return; }
+    await apiFetch(`/api/trips/${currentTripId}/expenses`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ date, category, description, amount, currency }),
+    });
+    ["expense-date","expense-category","expense-desc","expense-amount"].forEach(id => document.getElementById(id).value = "");
+    loadExpenses();
+  });
+
+  // ---- 其他文件 ----
+  async function loadDocuments() {
+    const tbody = document.getElementById("documents-tbody");
+    const emptyEl = document.getElementById("documents-empty");
+    tbody.innerHTML = "";
+    const data = await apiFetch(`/api/trips/${currentTripId}/documents`);
+    const items = data.documents || [];
+    emptyEl.style.display = items.length === 0 ? "block" : "none";
+
+    for (const d of items) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td><span class="doc-type-tag">${d.doc_type}</span></td><td><a href="${d.web_content_link || d.web_view_link}" target="_blank" rel="noopener">${d.name}</a></td><td></td>`;
+      const deleteBtn = document.createElement("button");
+      deleteBtn.className = "danger";
+      deleteBtn.textContent = "刪除";
+      deleteBtn.addEventListener("click", async () => {
+        if (!confirm(`確定要刪除「${d.name}」嗎?`)) return;
+        await apiFetch(`/api/documents/${d.id}`, { method: "DELETE" });
+        loadDocuments();
+      });
+      tr.lastElementChild.appendChild(deleteBtn);
+      tbody.appendChild(tr);
+    }
+  }
+
+  document.getElementById("doc-upload-btn").addEventListener("click", async () => {
+    const input = document.getElementById("doc-file-input");
+    const statusEl = document.getElementById("doc-status");
+    const progressBar = document.getElementById("doc-progress-bar");
+    const docType = document.getElementById("doc-type-select").value;
+    const files = Array.from(input.files || []);
+    if (files.length === 0) { statusEl.textContent = "請先選擇檔案"; return; }
+
+    for (const file of files) {
+      statusEl.textContent = `準備上傳:${file.name}`;
+      progressBar.style.width = "0%";
+      try {
+        const initData = await apiFetch(`/api/trips/${currentTripId}/documents/upload-init`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: file.name, mimeType: file.type, size: file.size }),
+        });
+        const driveFile = await uploadWithProgress(initData.uploadUrl, file, file.type, (pct) => {
+          progressBar.style.width = pct + "%";
+          statusEl.textContent = `上傳中:${file.name}(${pct}%)`;
+        });
+        await apiFetch(`/api/trips/${currentTripId}/documents`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            driveFileId: driveFile.id, name: file.name, docType,
+            webViewLink: driveFile.webViewLink, webContentLink: driveFile.webContentLink,
+          }),
+        });
+        statusEl.textContent = `完成:${file.name}`;
+      } catch (err) {
+        statusEl.textContent = `上傳失敗(${file.name}):${err.message}`;
+      }
+    }
+    input.value = "";
+    loadDocuments();
+  });
+
+  // ---------- 待辦事項 ----------
+  async function loadChecklist() {
+    const list = document.getElementById("checklist-list");
+    const emptyEl = document.getElementById("checklist-empty");
+    list.innerHTML = "";
+    const data = await apiFetch("/api/checklist");
+    const items = data.items || [];
+    emptyEl.style.display = items.length === 0 ? "block" : "none";
+
+    for (const item of items) {
+      const row = document.createElement("div");
+      row.className = "checklist-item" + (item.done ? " done" : "");
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = !!item.done;
+      checkbox.addEventListener("change", async () => {
+        await apiFetch(`/api/checklist/${item.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ done: checkbox.checked }),
+        });
+        loadChecklist();
+      });
+      const span = document.createElement("span");
+      span.textContent = item.text;
+      const deleteBtn = document.createElement("button");
+      deleteBtn.className = "danger";
+      deleteBtn.textContent = "移除";
+      deleteBtn.addEventListener("click", async () => {
+        await apiFetch(`/api/checklist/${item.id}`, { method: "DELETE" });
+        loadChecklist();
+      });
+      row.appendChild(checkbox);
+      row.appendChild(span);
+      row.appendChild(deleteBtn);
+      list.appendChild(row);
+    }
+  }
+
+  document.getElementById("checklist-add-btn").addEventListener("click", async () => {
+    const input = document.getElementById("checklist-input");
+    const text = input.value.trim();
+    if (!text) return;
+    await apiFetch("/api/checklist", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    input.value = "";
+    loadChecklist();
+  });
+  document.getElementById("checklist-input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") document.getElementById("checklist-add-btn").click();
+  });
+
+  // ---------- Log ----------
+  async function loadLogs() {
+    const tbody = document.getElementById("logs-tbody");
+    const emptyEl = document.getElementById("logs-empty");
+    tbody.innerHTML = "";
+    try {
+      const data = await apiFetch("/api/logs");
+      const logs = data.logs || [];
+      emptyEl.style.display = logs.length === 0 ? "block" : "none";
+      for (const l of logs) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${l.timestamp}</td><td>${l.email}</td><td>${l.action}</td><td>${l.detail}</td>`;
+        tbody.appendChild(tr);
+      }
+    } catch (err) {
+      emptyEl.style.display = "block";
+      emptyEl.textContent = "無法載入紀錄:" + err.message;
+    }
   }
 </script>
 
