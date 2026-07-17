@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>家族旅遊相簿</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+  :root {
+    --bg: #0f2d2a;
+    --bg-soft: #163b36;
+    --paper: #f6f3ea;
+    --ink: #14201e;
+    --gold: #e0a94a;
+    --teal: #2f6f64;
+    --line: rgba(230, 224, 208, 0.16);
+    --radius: 14px;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    font-family: "Helvetica Neue", "Noto Sans TC", -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--paper);
+    min-height: 100vh;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 22px 28px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .brand {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+
+  .brand .mark {
+    font-family: Georgia, "Noto Serif TC", serif;
+    font-size: 26px;
+    letter-spacing: 0.5px;
+    color: var(--gold);
+  }
+
+  .brand .sub {
+    font-size: 13px;
+    color: rgba(246, 243, 234, 0.55);
+    letter-spacing: 1px;
+  }
+
+  #user-box { display: flex; align-items: center; gap: 12px; }
+  #user-box img { width: 32px; height: 32px; border-radius: 50%; }
+  #user-box span { font-size: 14px; opacity: 0.85; }
+
+  main {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 40px 28px 80px;
+  }
+
+  #gate {
+    text-align: center;
+    padding: 120px 20px;
+  }
+  #gate h1 {
+    font-family: Georgia, "Noto Serif TC", serif;
+    font-size: 34px;
+    color: var(--gold);
+    margin-bottom: 8px;
+  }
+  #gate p { color: rgba(246,243,234,0.6); margin-bottom: 28px; }
+
+  .panel {
+    background: var(--bg-soft);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin-bottom: 28px;
+  }
+
+  .panel h2 {
+    font-family: Georgia, "Noto Serif TC", serif;
+    font-size: 18px;
+    margin: 0 0 16px;
+    color: var(--gold);
+    font-weight: normal;
+  }
+
+  #upload-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+
+  input[type="file"] {
+    color: rgba(246,243,234,0.8);
+    font-size: 13px;
+  }
+
+  button {
+    background: var(--gold);
+    color: #201404;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button:hover:not(:disabled) { filter: brightness(1.08); }
+
+  .progress-wrap {
+    flex: 1 1 220px;
+    height: 8px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 4px;
+    overflow: hidden;
+    min-width: 160px;
+  }
+  .progress-bar {
+    height: 100%;
+    width: 0%;
+    background: var(--teal);
+    transition: width 0.15s ease;
+  }
+
+  #status-msg { font-size: 13px; color: rgba(246,243,234,0.6); margin-top: 10px; min-height: 18px; }
+
+  #gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    gap: 16px;
+  }
+
+  .card {
+    background: var(--bg-soft);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+    text-decoration: none;
+    color: inherit;
+    display: flex;
+    flex-direction: column;
+  }
+  .thumb {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    background: #0a1d1a;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(246,243,234,0.35);
+    font-size: 12px;
+  }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .card .name {
+    padding: 8px 10px;
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  #empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: rgba(246,243,234,0.4);
+    font-size: 14px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <span class="mark">家族旅遊相簿</span>
+    <span class="sub">FAMILY TRAVEL ARCHIVE</span>
+  </div>
+  <div id="user-box" style="display:none;">
+    <img id="user-avatar" src="" alt="" />
+    <span id="user-name"></span>
+    <button id="signout-btn" style="background:transparent;border:1px solid var(--line);color:var(--paper);">登出</button>
+  </div>
+</header>
+
+<main>
+  <div id="gate">
+    <h1>只限家庭成員</h1>
+    <p>請使用授權的 Google 帳號登入,才能瀏覽與上傳照片影片。</p>
+    <div id="g_id_signin"></div>
+    <p id="auth-error" style="color:#e08a8a; margin-top:20px;"></p>
+  </div>
+
+  <div id="app" style="display:none;">
+    <div class="panel">
+      <h2>上傳新檔案</h2>
+      <div id="upload-row">
+        <input type="file" id="file-input" multiple />
+        <button id="upload-btn">開始上傳</button>
+        <div class="progress-wrap"><div class="progress-bar" id="progress-bar"></div></div>
+      </div>
+      <div id="status-msg"></div>
+    </div>
+
+    <div class="panel">
+      <h2>相簿</h2>
+      <div id="gallery"></div>
+      <div id="empty-state" style="display:none;">目前還沒有照片或影片,上傳第一份回憶吧。</div>
+    </div>
+  </div>
+</main>
+
+<script>
+  // ====== 設定區:換成你自己的參數 ======
+  const GOOGLE_CLIENT_ID = "583386271797-l66a91s2og0bklu05tgo3nt81bl8ved2.apps.googleusercontent.com";
+  const WORKER_URL = "https://family-drive-site.kennychuang.workers.dev";
+  // =====================================
+
+  let idToken = null;
+
+  function initGoogleSignIn() {
+    google.accounts.id.initialize({
+      client_id: GOOGLE_CLIENT_ID,
+      callback: handleCredentialResponse,
+    });
+    google.accounts.id.renderButton(
+      document.getElementById("g_id_signin"),
+      { theme: "outline", size: "large", text: "signin_with" }
+    );
+  }
+  window.onload = initGoogleSignIn;
+
+  async function handleCredentialResponse(response) {
+    idToken = response.credential;
+    const errorEl = document.getElementById("auth-error");
+    errorEl.textContent = "";
+
+    try {
+      const res = await fetch(`${WORKER_URL}/api/auth`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id_token: idToken }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || "驗證失敗");
+      }
+
+      document.getElementById("gate").style.display = "none";
+      document.getElementById("app").style.display = "block";
+      document.getElementById("user-box").style.display = "flex";
+      document.getElementById("user-name").textContent = data.name || data.email;
+
+      const payload = JSON.parse(atob(idToken.split(".")[1]));
+      document.getElementById("user-avatar").src = payload.picture || "";
+
+      loadGallery();
+    } catch (err) {
+      errorEl.textContent = "無法登入:" + err.message + "(此帳號可能不在家庭白名單內)";
+    }
+  }
+
+  document.getElementById("signout-btn").addEventListener("click", () => {
+    idToken = null;
+    google.accounts.id.disableAutoSelect();
+    document.getElementById("app").style.display = "none";
+    document.getElementById("user-box").style.display = "none";
+    document.getElementById("gate").style.display = "block";
+  });
+
+  async function loadGallery() {
+    const gallery = document.getElementById("gallery");
+    const emptyState = document.getElementById("empty-state");
+    gallery.innerHTML = "";
+
+    const res = await fetch(`${WORKER_URL}/api/files`, {
+      headers: { Authorization: `Bearer ${idToken}` },
+    });
+    const data = await res.json();
+    const files = data.files || [];
+
+    if (files.length === 0) {
+      emptyState.style.display = "block";
+      return;
+    }
+    emptyState.style.display = "none";
+
+    for (const f of files) {
+      const card = document.createElement("a");
+      card.className = "card";
+      card.href = f.webViewLink;
+      card.target = "_blank";
+      card.rel = "noopener";
+
+      const thumb = document.createElement("div");
+      thumb.className = "thumb";
+      if (f.thumbnailLink) {
+        const img = document.createElement("img");
+        img.src = f.thumbnailLink;
+        img.loading = "lazy";
+        thumb.appendChild(img);
+      } else {
+        thumb.textContent = f.mimeType && f.mimeType.startsWith("video") ? "影片" : "檔案";
+      }
+
+      const name = document.createElement("div");
+      name.className = "name";
+      name.textContent = f.name;
+
+      card.appendChild(thumb);
+      card.appendChild(name);
+      gallery.appendChild(card);
+    }
+  }
+
+  document.getElementById("upload-btn").addEventListener("click", async () => {
+    const input = document.getElementById("file-input");
+    const statusMsg = document.getElementById("status-msg");
+    const progressBar = document.getElementById("progress-bar");
+    const files = Array.from(input.files || []);
+
+    if (files.length === 0) {
+      statusMsg.textContent = "請先選擇檔案";
+      return;
+    }
+
+    for (const file of files) {
+      statusMsg.textContent = `準備上傳:${file.name}`;
+      progressBar.style.width = "0%";
+
+      try {
+        // 1. 跟後端要一個 Google Drive 的可續傳上傳網址
+        const initRes = await fetch(`${WORKER_URL}/api/upload-init`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${idToken}`,
+          },
+          body: JSON.stringify({
+            name: file.name,
+            mimeType: file.type || "application/octet-stream",
+            size: file.size,
+          }),
+        });
+        const initData = await initRes.json();
+        if (!initRes.ok || !initData.uploadUrl) {
+          throw new Error(initData.error || "無法建立上傳工作階段");
+        }
+
+        // 2. 直接把檔案傳到 Google Drive(不經過我們的後端,適合大檔案)
+        await uploadWithProgress(initData.uploadUrl, file, (pct) => {
+          progressBar.style.width = pct + "%";
+          statusMsg.textContent = `上傳中:${file.name}(${pct}%)`;
+        });
+
+        statusMsg.textContent = `完成:${file.name}`;
+      } catch (err) {
+        statusMsg.textContent = `上傳失敗(${file.name}):${err.message}`;
+      }
+    }
+
+    input.value = "";
+    loadGallery();
+  });
+
+  function uploadWithProgress(url, file, onProgress) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("PUT", url, true);
+      xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          onProgress(Math.round((e.loaded / e.total) * 100));
+        }
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) resolve();
+        else reject(new Error(`Google Drive 回傳錯誤 (${xhr.status})`));
+      };
+      xhr.onerror = () => reject(new Error("網路錯誤"));
+      xhr.send(file);
+    });
+  }
+</script>
+
+</body>
+</html>
