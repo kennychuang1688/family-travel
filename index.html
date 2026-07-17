@@ -269,7 +269,7 @@
       <h2>所有行程</h2>
       <table id="trips-table">
         <thead>
-          <tr><th>日期</th><th>國家</th><th>地點</th></tr>
+          <tr><th>日期</th><th>國家</th><th>地點</th><th>操作</th></tr>
         </thead>
         <tbody id="trips-tbody"></tbody>
       </table>
@@ -564,9 +564,40 @@
   }
 
   // ---------- 旅遊行程列表 ----------
+  let editingTripId = null;
+
+  function resetTripForm() {
+    editingTripId = null;
+    document.getElementById("create-trip-btn").textContent = "建立行程";
+    ["trip-date-start", "trip-date-end", "trip-country", "trip-location", "trip-itinerary"].forEach(
+      (id) => (document.getElementById(id).value = "")
+    );
+    document.getElementById("trip-create-status").textContent = "";
+  }
+
+  function startEditTrip(t) {
+    editingTripId = t.id;
+    document.getElementById("trip-date-start").value = t.date_start || "";
+    document.getElementById("trip-date-end").value = t.date_end || "";
+    document.getElementById("trip-country").value = t.country || "";
+    document.getElementById("trip-location").value = t.location || "";
+    document.getElementById("trip-itinerary").value = "";
+    document.getElementById("create-trip-btn").textContent = "儲存修改";
+    document.getElementById("trip-create-status").textContent = "";
+    const form = document.getElementById("new-trip-form");
+    form.style.display = "block";
+    form.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   document.getElementById("toggle-new-trip").addEventListener("click", () => {
     const form = document.getElementById("new-trip-form");
-    form.style.display = form.style.display === "none" ? "block" : "none";
+    const showing = form.style.display !== "none" && form.style.display !== "";
+    if (showing) {
+      form.style.display = "none";
+    } else {
+      resetTripForm();
+      form.style.display = "block";
+    }
   });
 
   document.getElementById("create-trip-btn").addEventListener("click", async () => {
@@ -575,25 +606,34 @@
     const dateEnd = document.getElementById("trip-date-end").value;
     const country = document.getElementById("trip-country").value.trim();
     const location = document.getElementById("trip-location").value.trim();
-    const itinerary = document.getElementById("trip-itinerary").value;
 
     if (!dateStart || !country || !location) {
       statusEl.textContent = "請至少填寫開始日期、國家、地點";
       return;
     }
-    statusEl.textContent = "建立中...";
+
     try {
-      await apiFetch("/api/trips", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dateStart, dateEnd, country, location, itinerary }),
-      });
-      statusEl.textContent = "建立完成";
+      if (editingTripId) {
+        statusEl.textContent = "儲存中...";
+        await apiFetch(`/api/trips/${editingTripId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ dateStart, dateEnd, country, location }),
+        });
+      } else {
+        statusEl.textContent = "建立中...";
+        const itinerary = document.getElementById("trip-itinerary").value;
+        await apiFetch("/api/trips", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ dateStart, dateEnd, country, location, itinerary }),
+        });
+      }
       document.getElementById("new-trip-form").style.display = "none";
-      ["trip-date-start","trip-date-end","trip-country","trip-location","trip-itinerary"].forEach(id => document.getElementById(id).value = "");
+      resetTripForm();
       loadTrips();
     } catch (err) {
-      statusEl.textContent = "建立失敗:" + err.message;
+      statusEl.textContent = "儲存失敗:" + err.message;
     }
   });
 
@@ -604,11 +644,54 @@
     const data = await apiFetch("/api/trips");
     const trips = data.trips || [];
     emptyEl.style.display = trips.length === 0 ? "block" : "none";
+
     for (const t of trips) {
       const tr = document.createElement("tr");
       tr.className = "clickable";
       const dateRange = t.date_end ? `${t.date_start} ~ ${t.date_end}` : t.date_start;
-      tr.innerHTML = `<td>${dateRange}</td><td>${t.country}</td><td>${t.location}</td>`;
+
+      const tdDate = document.createElement("td");
+      tdDate.textContent = dateRange;
+      const tdCountry = document.createElement("td");
+      tdCountry.textContent = t.country;
+      const tdLocation = document.createElement("td");
+      tdLocation.textContent = t.location;
+      const tdActions = document.createElement("td");
+
+      const editBtn = document.createElement("button");
+      editBtn.className = "ghost";
+      editBtn.textContent = "編輯";
+      editBtn.style.marginRight = "8px";
+      editBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        startEditTrip(t);
+      });
+
+      const deleteBtn = document.createElement("button");
+      deleteBtn.className = "danger";
+      deleteBtn.textContent = "移除";
+      deleteBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const ok = confirm(
+          `確定要移除「${t.country} · ${t.location}」這個行程嗎?\n\n這會刪除網站上的行程規劃、費用、文件紀錄,但不會刪除 Google Drive 上的照片影片與資料夾。此動作無法復原。`
+        );
+        if (!ok) return;
+        try {
+          await apiFetch(`/api/trips/${t.id}`, { method: "DELETE" });
+          tr.remove();
+          document.getElementById("trips-empty").style.display = tbody.children.length === 0 ? "block" : "none";
+        } catch (err) {
+          alert("移除失敗:" + err.message);
+        }
+      });
+
+      tdActions.appendChild(editBtn);
+      tdActions.appendChild(deleteBtn);
+
+      tr.appendChild(tdDate);
+      tr.appendChild(tdCountry);
+      tr.appendChild(tdLocation);
+      tr.appendChild(tdActions);
       tr.addEventListener("click", () => openTrip(t.id));
       tbody.appendChild(tr);
     }
@@ -955,6 +1038,52 @@
   });
 
   // ---------- 待辦事項 ----------
+  function renderChecklistRow(item) {
+    const row = document.createElement("div");
+    row.className = "checklist-item" + (item.done ? " done" : "");
+    row.dataset.id = item.id;
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = !!item.done;
+    checkbox.addEventListener("change", async () => {
+      row.classList.toggle("done", checkbox.checked);
+      try {
+        await apiFetch(`/api/checklist/${item.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ done: checkbox.checked }),
+        });
+      } catch (err) {
+        checkbox.checked = !checkbox.checked;
+        row.classList.toggle("done", checkbox.checked);
+        alert("更新失敗:" + err.message);
+      }
+    });
+
+    const span = document.createElement("span");
+    span.textContent = item.text;
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.className = "danger";
+    deleteBtn.textContent = "移除";
+    deleteBtn.addEventListener("click", async () => {
+      try {
+        await apiFetch(`/api/checklist/${item.id}`, { method: "DELETE" });
+        row.remove();
+        const list = document.getElementById("checklist-list");
+        document.getElementById("checklist-empty").style.display = list.children.length === 0 ? "block" : "none";
+      } catch (err) {
+        alert("移除失敗:" + err.message);
+      }
+    });
+
+    row.appendChild(checkbox);
+    row.appendChild(span);
+    row.appendChild(deleteBtn);
+    return row;
+  }
+
   async function loadChecklist() {
     const list = document.getElementById("checklist-list");
     const emptyEl = document.getElementById("checklist-empty");
@@ -962,42 +1091,8 @@
     const data = await apiFetch("/api/checklist");
     const items = data.items || [];
     emptyEl.style.display = items.length === 0 ? "block" : "none";
-
     for (const item of items) {
-      const row = document.createElement("div");
-      row.className = "checklist-item" + (item.done ? " done" : "");
-      const checkbox = document.createElement("input");
-      checkbox.type = "checkbox";
-      checkbox.checked = !!item.done;
-      checkbox.addEventListener("change", async () => {
-        // 先立即更新畫面(不整頁重繪,避免閃動),再背景同步到後端
-        row.classList.toggle("done", checkbox.checked);
-        try {
-          await apiFetch(`/api/checklist/${item.id}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ done: checkbox.checked }),
-          });
-        } catch (err) {
-          // 更新失敗就還原畫面狀態
-          checkbox.checked = !checkbox.checked;
-          row.classList.toggle("done", checkbox.checked);
-          alert("更新失敗:" + err.message);
-        }
-      });
-      const span = document.createElement("span");
-      span.textContent = item.text;
-      const deleteBtn = document.createElement("button");
-      deleteBtn.className = "danger";
-      deleteBtn.textContent = "移除";
-      deleteBtn.addEventListener("click", async () => {
-        await apiFetch(`/api/checklist/${item.id}`, { method: "DELETE" });
-        loadChecklist();
-      });
-      row.appendChild(checkbox);
-      row.appendChild(span);
-      row.appendChild(deleteBtn);
-      list.appendChild(row);
+      list.appendChild(renderChecklistRow(item));
     }
   }
 
@@ -1006,16 +1101,22 @@
     const raw = input.value.trim();
     if (!raw) return;
     // 支援用逗號(全形、半形皆可)一次輸入多筆待辦事項
-    const items = raw.split(/[,,]/).map((s) => s.trim()).filter(Boolean);
-    for (const text of items) {
-      await apiFetch("/api/checklist", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
-      });
+    const texts = raw.split(/[,,]/).map((s) => s.trim()).filter(Boolean);
+    const list = document.getElementById("checklist-list");
+    for (const text of texts) {
+      try {
+        const result = await apiFetch("/api/checklist", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text }),
+        });
+        list.appendChild(renderChecklistRow({ id: result.id, text, done: 0 }));
+      } catch (err) {
+        alert(`新增「${text}」失敗:` + err.message);
+      }
     }
+    document.getElementById("checklist-empty").style.display = list.children.length === 0 ? "block" : "none";
     input.value = "";
-    loadChecklist();
   });
   document.getElementById("checklist-input").addEventListener("keydown", (e) => {
     if (e.key === "Enter") document.getElementById("checklist-add-btn").click();
