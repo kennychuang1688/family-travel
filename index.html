@@ -295,9 +295,8 @@
           <div id="itinerary-editor"></div>
         </div>
         <div class="form-actions" style="margin-top:14px;">
-          <button class="primary" id="save-itinerary-btn">儲存這一天的行程</button>
+          <span class="status-line" id="itinerary-status">已儲存</span>
         </div>
-        <div class="status-line" id="itinerary-status"></div>
       </div>
     </div>
 
@@ -414,6 +413,7 @@
       [{ font: [] }],
       [{ size: ["small", false, "large", "huge"] }],
       [{ list: "ordered" }, { list: "bullet" }, { list: "check" }],
+      [{ indent: "-1" }, { indent: "+1" }],
       [{ align: [] }],
       ["blockquote"],
       ["link", "image"],
@@ -448,6 +448,10 @@
       alert(`書籤已設定,之後插入超連結時,網址欄填「#bm-${safeName}」即可跳到這裡`);
     });
     toolbarEl.appendChild(bookmarkBtn);
+
+    quillItinerary.on("text-change", (delta, oldDelta, source) => {
+      if (source === "user") scheduleAutoSave();
+    });
   }
 
   async function handleItineraryImageInsert() {
@@ -649,14 +653,23 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: html }),
       });
-      if (!silent) statusEl.textContent = "已儲存";
+      statusEl.textContent = "已儲存";
     } catch (err) {
       statusEl.textContent = "儲存失敗:" + err.message;
     }
   }
 
+  let autoSaveTimer = null;
+  function scheduleAutoSave() {
+    const statusEl = document.getElementById("itinerary-status");
+    statusEl.textContent = "編輯中...";
+    clearTimeout(autoSaveTimer);
+    autoSaveTimer = setTimeout(() => saveCurrentDayContent(true), 1500);
+  }
+
   async function switchItineraryDay(date) {
     if (currentItineraryDate && currentItineraryDate !== date) {
+      clearTimeout(autoSaveTimer);
       await saveCurrentDayContent(true);
     }
     currentItineraryDate = date;
@@ -667,10 +680,8 @@
     } else {
       quillItinerary.setText(content || "");
     }
-    document.getElementById("itinerary-status").textContent = "";
+    document.getElementById("itinerary-status").textContent = "已儲存";
   }
-
-  document.getElementById("save-itinerary-btn").addEventListener("click", () => saveCurrentDayContent(false));
 
   // ---------- 行程詳細 ----------
   document.getElementById("back-to-trips").addEventListener("click", () => switchView("trips"));
