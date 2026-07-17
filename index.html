@@ -124,6 +124,7 @@
   #lightbox-close { align-self: flex-end; }
   .media-info { padding: 8px 10px; font-size: 12px; }
   .media-info input { width: 100%; margin-bottom: 6px; font-size: 12px; padding: 5px 6px; }
+  .media-name { font-size: 11px; color: rgba(59,42,33,0.55); margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .media-actions { display: flex; gap: 8px; margin-top: 4px; }
   .media-actions a, .media-actions button { font-size: 11px; }
 
@@ -322,6 +323,10 @@
         <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
           <input type="file" id="media-file-input" multiple accept="image/*,video/*" />
           <button class="primary" id="media-upload-btn">開始上傳</button>
+          <select id="media-sort-select" style="margin-left:auto;">
+            <option value="taken">依實際拍攝時間排序</option>
+            <option value="name">依檔名排序</option>
+          </select>
         </div>
         <div class="status-line" id="media-status"></div>
         <div id="gallery"></div>
@@ -956,15 +961,37 @@
     }
   });
 
-  async function loadMedia() {
+  function sortMediaItems(items, sortBy) {
+    const sorted = [...items];
+    if (sortBy === "name") {
+      sorted.sort((a, b) => (a.name || "").localeCompare(b.name || "", undefined, { numeric: true }));
+    } else {
+      // 依實際拍攝時間排序;沒有拍攝時間資訊的,退而用上傳時間
+      sorted.sort((a, b) => {
+        const ta = new Date(a.captured_at || a.uploaded_at || 0).getTime();
+        const tb = new Date(b.captured_at || b.uploaded_at || 0).getTime();
+        return ta - tb;
+      });
+    }
+    return sorted;
+  }
+
+  document.getElementById("media-sort-select").addEventListener("change", () => {
+    if (lastMediaItems) renderGallery(lastMediaItems);
+  });
+
+  let lastMediaItems = null;
+
+  function renderGallery(items) {
     const gallery = document.getElementById("gallery");
     const emptyEl = document.getElementById("media-empty");
     gallery.innerHTML = "";
-    const data = await apiFetch(`/api/trips/${currentTripId}/media`);
-    const items = data.media || [];
     emptyEl.style.display = items.length === 0 ? "block" : "none";
 
-    for (const m of items) {
+    const sortBy = document.getElementById("media-sort-select").value;
+    const sortedItems = sortMediaItems(items, sortBy);
+
+    for (const m of sortedItems) {
       const card = document.createElement("div");
       card.className = "media-card";
 
@@ -983,6 +1010,11 @@
 
       const info = document.createElement("div");
       info.className = "media-info";
+      const nameLabel = document.createElement("div");
+      nameLabel.className = "media-name";
+      nameLabel.textContent = m.name || "";
+      nameLabel.title = m.name || "";
+
       const captionInput = document.createElement("input");
       captionInput.type = "text";
       captionInput.placeholder = "加上說明文字...";
@@ -1022,12 +1054,19 @@
       actions.appendChild(downloadLink);
       actions.appendChild(deleteBtn);
 
+      info.appendChild(nameLabel);
       info.appendChild(captionInput);
       info.appendChild(actions);
       card.appendChild(thumb);
       card.appendChild(info);
       gallery.appendChild(card);
     }
+  }
+
+  async function loadMedia() {
+    const data = await apiFetch(`/api/trips/${currentTripId}/media`);
+    lastMediaItems = data.media || [];
+    renderGallery(lastMediaItems);
   }
 
   document.getElementById("media-upload-btn").addEventListener("click", async () => {
