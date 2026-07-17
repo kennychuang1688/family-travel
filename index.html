@@ -604,11 +604,13 @@
     const CHUNK_SIZE = 8 * 1024 * 1024; // 8MB,需為 256KB 的倍數
     const MAX_RETRIES_PER_CHUNK = 5;
     const total = file.size;
+    const relayUrl = `${WORKER_URL}/api/upload-relay?uploadUrl=${encodeURIComponent(url)}`;
 
     function putChunk(start, end) {
       return new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
-        xhr.open("PUT", url, true);
+        xhr.open("PUT", relayUrl, true);
+        xhr.setRequestHeader("Authorization", `Bearer ${idToken}`);
         xhr.setRequestHeader("Content-Range", `bytes ${start}-${end - 1}/${total}`);
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) onProgress(Math.round(((start + e.loaded) / total) * 100));
@@ -620,7 +622,7 @@
           } else if (xhr.status === 308) {
             resolve({ done: false });
           } else {
-            reject(new Error(`Google 回應錯誤(${xhr.status})`));
+            reject(new Error(`上傳回應錯誤(${xhr.status}):${xhr.responseText}`));
           }
         };
         xhr.onerror = () => reject(new Error("網路錯誤"));
@@ -632,7 +634,8 @@
     function queryProgress() {
       return new Promise((resolve) => {
         const xhr = new XMLHttpRequest();
-        xhr.open("PUT", url, true);
+        xhr.open("PUT", relayUrl, true);
+        xhr.setRequestHeader("Authorization", `Bearer ${idToken}`);
         xhr.setRequestHeader("Content-Range", `bytes */${total}`);
         xhr.onload = () => {
           if (xhr.status === 308) {
