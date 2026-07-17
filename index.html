@@ -175,6 +175,9 @@
   #itinerary-editor .ql-editor.ql-blank::before { color: rgba(246,243,234,0.35); font-style: normal; }
   #itinerary-editor .ql-editor img { max-width: 100%; border-radius: 8px; margin: 8px 0; }
   #itinerary-editor .ql-editor a { color: var(--gold); text-decoration: underline; }
+  #itinerary-editor .ql-editor li[data-list="checked"] > .ql-ui,
+  #itinerary-editor .ql-editor li[data-list="unchecked"] > .ql-ui { filter: invert(1); }
+  #itinerary-editor .ql-editor li[data-list="checked"] { color: rgba(246,243,234,0.45); text-decoration: line-through; }
   #itinerary-editor .ql-editor h1, #itinerary-editor .ql-editor h2, #itinerary-editor .ql-editor h3 {
     color: var(--gold); font-family: Georgia, "Noto Serif TC", serif;
   }
@@ -398,7 +401,7 @@
       [{ color: [] }, { background: [] }],
       [{ font: [] }],
       [{ size: ["small", false, "large", "huge"] }],
-      [{ list: "ordered" }, { list: "bullet" }],
+      [{ list: "ordered" }, { list: "bullet" }, { list: "check" }],
       [{ align: [] }],
       ["blockquote"],
       ["link", "image"],
@@ -419,7 +422,7 @@
     const bookmarkBtn = document.createElement("button");
     bookmarkBtn.type = "button";
     bookmarkBtn.id = "bookmark-btn";
-    bookmarkBtn.textContent = "������ 設為書籤";
+    bookmarkBtn.textContent = "設為書籤";
     bookmarkBtn.title = "先選取文字,點這裡設定書籤名稱,之後可以用超連結「#書籤名稱」跳到這段文字";
     bookmarkBtn.addEventListener("click", () => {
       const range = quillItinerary.getSelection();
