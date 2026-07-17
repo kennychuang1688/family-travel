@@ -106,8 +106,22 @@
 
   #gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 14px; }
   .media-card { background: var(--bg-softer); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
-  .media-thumb { width: 100%; aspect-ratio: 4/3; background: var(--bg-softer); display: flex; align-items: center; justify-content: center; color: rgba(59,42,33,0.35); font-size: 12px; }
+  .media-thumb { width: 100%; aspect-ratio: 4/3; background: var(--bg-softer); display: flex; align-items: center; justify-content: center; color: rgba(59,42,33,0.35); font-size: 12px; cursor: pointer; }
   .media-thumb img { width: 100%; height: 100%; object-fit: cover; }
+
+  .lightbox-overlay {
+    position: fixed; inset: 0; background: rgba(20,14,10,0.75);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000; padding: 24px;
+  }
+  .lightbox-content {
+    background: var(--bg-soft); border-radius: var(--radius); padding: 16px;
+    max-width: 90vw; max-height: 90vh; display: flex; flex-direction: column; gap: 10px;
+  }
+  .lightbox-content iframe, .lightbox-content img, .lightbox-content video {
+    max-width: 82vw; max-height: 76vh; width: 640px; height: 480px; border: none; border-radius: 8px; background: #000;
+  }
+  #lightbox-close { align-self: flex-end; }
   .media-info { padding: 8px 10px; font-size: 12px; }
   .media-info input { width: 100%; margin-bottom: 6px; font-size: 12px; padding: 5px 6px; }
   .media-actions { display: flex; gap: 8px; margin-top: 4px; }
@@ -255,9 +269,6 @@
             <input type="text" id="trip-location" placeholder="例如:東京" />
           </label>
         </div>
-        <label class="field" style="margin-bottom:12px;">行程規劃(選填)
-          <textarea id="trip-itinerary" placeholder="Day1: ... Day2: ..."></textarea>
-        </label>
         <div class="form-actions">
           <button class="primary" id="create-trip-btn">建立行程</button>
         </div>
@@ -308,7 +319,7 @@
         <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
           <input type="file" id="media-file-input" multiple accept="image/*,video/*" />
           <button class="primary" id="media-upload-btn">開始上傳</button>
-          <div class="progress-wrap"><div class="progress-bar" id="media-progress-bar"></div></div>
+          <span class="status-line" id="media-progress-count"></span>
         </div>
         <div class="status-line" id="media-status"></div>
         <div id="gallery"></div>
@@ -395,11 +406,47 @@
   </div>
 </main>
 
+<div id="lightbox-overlay" class="lightbox-overlay" style="display:none;">
+  <div class="lightbox-content">
+    <button id="lightbox-close" class="ghost">✕ 關閉</button>
+    <div id="lightbox-body"></div>
+  </div>
+</div>
+
 <script>
   // ====== 設定區 ======
   const GOOGLE_CLIENT_ID = "583386271797-l66a91s2og0bklu05tgo3nt81bl8ved2.apps.googleusercontent.com";
   const WORKER_URL = "https://family-drive-site.kennychuang.workers.dev";
   // =====================
+
+  // ---------- 照片/影片預覽(Lightbox) ----------
+  function openLightbox(m) {
+    const overlay = document.getElementById("lightbox-overlay");
+    const body = document.getElementById("lightbox-body");
+    body.innerHTML = "";
+    if (m.drive_file_id) {
+      const iframe = document.createElement("iframe");
+      iframe.src = `https://drive.google.com/file/d/${m.drive_file_id}/preview`;
+      iframe.allow = "autoplay";
+      body.appendChild(iframe);
+    } else if (m.web_view_link) {
+      const link = document.createElement("a");
+      link.href = m.web_view_link;
+      link.target = "_blank";
+      link.rel = "noopener";
+      link.textContent = "在 Google Drive 開啟";
+      body.appendChild(link);
+    }
+    overlay.style.display = "flex";
+  }
+  function closeLightbox() {
+    document.getElementById("lightbox-overlay").style.display = "none";
+    document.getElementById("lightbox-body").innerHTML = "";
+  }
+  document.getElementById("lightbox-close").addEventListener("click", closeLightbox);
+  document.getElementById("lightbox-overlay").addEventListener("click", (e) => {
+    if (e.target.id === "lightbox-overlay") closeLightbox();
+  });
 
   let idToken = null;
   let userIsAdmin = false;
@@ -569,7 +616,7 @@
   function resetTripForm() {
     editingTripId = null;
     document.getElementById("create-trip-btn").textContent = "建立行程";
-    ["trip-date-start", "trip-date-end", "trip-country", "trip-location", "trip-itinerary"].forEach(
+    ["trip-date-start", "trip-date-end", "trip-country", "trip-location"].forEach(
       (id) => (document.getElementById(id).value = "")
     );
     document.getElementById("trip-create-status").textContent = "";
@@ -581,7 +628,6 @@
     document.getElementById("trip-date-end").value = t.date_end || "";
     document.getElementById("trip-country").value = t.country || "";
     document.getElementById("trip-location").value = t.location || "";
-    document.getElementById("trip-itinerary").value = "";
     document.getElementById("create-trip-btn").textContent = "儲存修改";
     document.getElementById("trip-create-status").textContent = "";
     const form = document.getElementById("new-trip-form");
@@ -622,11 +668,10 @@
         });
       } else {
         statusEl.textContent = "建立中...";
-        const itinerary = document.getElementById("trip-itinerary").value;
         await apiFetch("/api/trips", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ dateStart, dateEnd, country, location, itinerary }),
+          body: JSON.stringify({ dateStart, dateEnd, country, location }),
         });
       }
       document.getElementById("new-trip-form").style.display = "none";
@@ -839,6 +884,8 @@
 
       const thumb = document.createElement("div");
       thumb.className = "media-thumb";
+      thumb.title = "點擊預覽";
+      thumb.addEventListener("click", () => openLightbox(m));
       if (m.thumbnail_link) {
         const img = document.createElement("img");
         img.src = m.thumbnail_link;
@@ -866,6 +913,10 @@
 
       const actions = document.createElement("div");
       actions.className = "media-actions";
+      const viewBtn = document.createElement("button");
+      viewBtn.className = "ghost";
+      viewBtn.textContent = "檢視";
+      viewBtn.addEventListener("click", () => openLightbox(m));
       const downloadLink = document.createElement("a");
       downloadLink.href = m.web_content_link || m.web_view_link || "#";
       downloadLink.target = "_blank";
@@ -881,6 +932,7 @@
           loadMedia();
         } catch (err) { alert("刪除失敗:" + err.message); }
       });
+      actions.appendChild(viewBtn);
       actions.appendChild(downloadLink);
       actions.appendChild(deleteBtn);
 
@@ -895,13 +947,16 @@
   document.getElementById("media-upload-btn").addEventListener("click", async () => {
     const input = document.getElementById("media-file-input");
     const statusEl = document.getElementById("media-status");
-    const progressBar = document.getElementById("media-progress-bar");
+    const countEl = document.getElementById("media-progress-count");
     const files = Array.from(input.files || []);
     if (files.length === 0) { statusEl.textContent = "請先選擇檔案"; return; }
 
+    const total = files.length;
+    let completed = 0;
+    countEl.textContent = `完成 ${completed}/${total}`;
+
     for (const file of files) {
-      statusEl.textContent = `準備上傳:${file.name}`;
-      progressBar.style.width = "0%";
+      statusEl.textContent = `上傳中:${file.name}`;
       try {
         const initData = await apiFetch(`/api/trips/${currentTripId}/media/upload-init`, {
           method: "POST",
@@ -909,7 +964,6 @@
           body: JSON.stringify({ name: file.name, mimeType: file.type, size: file.size }),
         });
         const driveFile = await uploadWithProgress(initData.uploadUrl, file, file.type, (pct) => {
-          progressBar.style.width = pct + "%";
           statusEl.textContent = `上傳中:${file.name}(${pct}%)`;
         });
 
@@ -921,6 +975,8 @@
             thumbnailLink: driveFile.thumbnailLink, webViewLink: driveFile.webViewLink, webContentLink: driveFile.webContentLink,
           }),
         });
+        completed++;
+        countEl.textContent = `完成 ${completed}/${total}`;
         statusEl.textContent = `完成:${file.name}`;
       } catch (err) {
         statusEl.textContent = `上傳失敗(${file.name}):${err.message}`;
