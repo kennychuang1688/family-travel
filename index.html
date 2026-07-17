@@ -315,7 +315,10 @@
 
     <div id="trip-sub-media" class="trip-subview">
       <div class="panel">
-        <h2>照片 / 影片</h2>
+        <h2>
+          照片 / 影片
+          <button class="ghost" id="sync-media-btn">同步 Drive 資料夾</button>
+        </h2>
         <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
           <input type="file" id="media-file-input" multiple accept="image/*,video/*" />
           <button class="primary" id="media-upload-btn">開始上傳</button>
@@ -595,18 +598,88 @@
     btn.addEventListener("click", () => switchView(btn.dataset.view));
   });
 
+  // 分段上傳 + 自動重試:把檔案切成一段一段傳,若某一段因網路問題失敗,
+  // 會先詢問 Google 目前實際收到多少內容,再從斷點接續,不用整個重傳。
   function uploadWithProgress(url, file, mimeType, onProgress) {
+    const CHUNK_SIZE = 8 * 1024 * 1024; // 8MB,需為 256KB 的倍數
+    const MAX_RETRIES_PER_CHUNK = 5;
+    const total = file.size;
+
+    function putChunk(start, end) {
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("PUT", url, true);
+        xhr.setRequestHeader("Content-Range", `bytes ${start}-${end - 1}/${total}`);
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) onProgress(Math.round(((start + e.loaded) / total) * 100));
+        };
+        xhr.onload = () => {
+          if (xhr.status === 200 || xhr.status === 201) {
+            try { resolve({ done: true, data: JSON.parse(xhr.responseText) }); }
+            catch (e) { resolve({ done: true, data: {} }); }
+          } else if (xhr.status === 308) {
+            resolve({ done: false });
+          } else {
+            reject(new Error(`Google 回應錯誤(${xhr.status})`));
+          }
+        };
+        xhr.onerror = () => reject(new Error("網路錯誤"));
+        xhr.send(file.slice(start, end));
+      });
+    }
+
+    // 詢問 Google 目前實際已收到多少內容(用於中斷後決定從哪裡接續)
+    function queryProgress() {
+      return new Promise((resolve) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("PUT", url, true);
+        xhr.setRequestHeader("Content-Range", `bytes */${total}`);
+        xhr.onload = () => {
+          if (xhr.status === 308) {
+            const range = xhr.getResponseHeader("Range");
+            const match = range && range.match(/bytes=0-(\d+)/);
+            resolve({ offset: match ? parseInt(match[1], 10) + 1 : 0 });
+          } else if (xhr.status === 200 || xhr.status === 201) {
+            try { resolve({ done: true, data: JSON.parse(xhr.responseText) }); }
+            catch (e) { resolve({ done: true, data: {} }); }
+          } else {
+            resolve({ offset: null });
+          }
+        };
+        xhr.onerror = () => resolve({ offset: null });
+        xhr.send();
+      });
+    }
+
     return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open("PUT", url, true);
-      xhr.setRequestHeader("Content-Type", mimeType || "application/octet-stream");
-      xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100)); };
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) resolve(JSON.parse(xhr.responseText));
-        else reject(new Error(`Google Drive 回傳錯誤 (${xhr.status})`));
-      };
-      xhr.onerror = () => reject(new Error("網路錯誤"));
-      xhr.send(file);
+      (async () => {
+        let offset = 0;
+        try {
+          while (offset < total || total === 0) {
+            const end = total === 0 ? 0 : Math.min(offset + CHUNK_SIZE, total);
+            let attempt = 0;
+            let advanced = false;
+            while (!advanced) {
+              attempt++;
+              try {
+                const result = await putChunk(offset, end);
+                if (result.done) { resolve(result.data); return; }
+                advanced = true;
+              } catch (err) {
+                if (attempt >= MAX_RETRIES_PER_CHUNK) throw err;
+                await new Promise((r) => setTimeout(r, 800 * attempt));
+                const status = await queryProgress();
+                if (status.done) { resolve(status.data); return; }
+                if (status.offset !== null) offset = status.offset;
+              }
+            }
+            if (total === 0) { resolve({}); return; }
+            offset = end;
+          }
+        } catch (err) {
+          reject(new Error("上傳失敗(已重試多次):" + err.message));
+        }
+      })();
     });
   }
 
@@ -870,6 +943,18 @@
   }
 
   // ---- 相簿 ----
+  document.getElementById("sync-media-btn").addEventListener("click", async () => {
+    const statusEl = document.getElementById("media-status");
+    statusEl.textContent = "正在掃描 Drive 資料夾...";
+    try {
+      const result = await apiFetch(`/api/trips/${currentTripId}/media/sync`, { method: "POST" });
+      statusEl.textContent = `同步完成:新增了 ${result.importedMedia} 張照片/影片(另有 ${result.importedDocs} 份文件補進其他文件)`;
+      loadMedia();
+    } catch (err) {
+      statusEl.textContent = "同步失敗:" + err.message;
+    }
+  });
+
   async function loadMedia() {
     const gallery = document.getElementById("gallery");
     const emptyEl = document.getElementById("media-empty");
