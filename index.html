@@ -750,12 +750,20 @@
       checkbox.type = "checkbox";
       checkbox.checked = !!item.done;
       checkbox.addEventListener("change", async () => {
-        await apiFetch(`/api/checklist/${item.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ done: checkbox.checked }),
-        });
-        loadChecklist();
+        // 先立即更新畫面(不整頁重繪,避免閃動),再背景同步到後端
+        row.classList.toggle("done", checkbox.checked);
+        try {
+          await apiFetch(`/api/checklist/${item.id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ done: checkbox.checked }),
+          });
+        } catch (err) {
+          // 更新失敗就還原畫面狀態
+          checkbox.checked = !checkbox.checked;
+          row.classList.toggle("done", checkbox.checked);
+          alert("更新失敗:" + err.message);
+        }
       });
       const span = document.createElement("span");
       span.textContent = item.text;
