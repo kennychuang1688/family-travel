@@ -126,6 +126,15 @@
   .total-line { text-align: right; font-size: 13px; color: var(--gold); margin-top: 8px; }
   .view { display: none; }
   .view.active { display: block; }
+
+  .sub-nav { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; border-bottom: 1px solid var(--line); padding-bottom: 14px; }
+  .sub-nav button {
+    background: transparent; border: 1px solid var(--line); color: rgba(246,243,234,0.7);
+    padding: 8px 16px; border-radius: 20px; cursor: pointer; font-size: 13px;
+  }
+  .sub-nav button.active { background: var(--gold); color: #201404; border-color: var(--gold); font-weight: 600; }
+  .trip-subview { display: none; }
+  .trip-subview.active { display: block; }
   .doc-type-tag { display: inline-block; background: var(--teal); color: var(--paper); font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-right: 8px; }
 </style>
 </head>
@@ -206,33 +215,45 @@
     <h1 class="trip-title" id="detail-title"></h1>
     <div class="trip-sub" id="detail-sub"></div>
 
-    <div class="panel">
-      <h2>行程規劃</h2>
-      <textarea id="detail-itinerary"></textarea>
-      <div class="form-actions" style="margin-top:10px;">
-        <button class="primary" id="save-itinerary-btn">儲存行程規劃</button>
-      </div>
-      <div class="status-line" id="itinerary-status"></div>
+    <div class="sub-nav" id="trip-sub-nav">
+      <button data-sub="itinerary" class="active">行程規劃</button>
+      <button data-sub="media">照片 / 影片</button>
+      <button data-sub="expenses">費用花費</button>
+      <button data-sub="documents">其他文件</button>
     </div>
 
-    <div class="panel">
-      <h2>照片 / 影片</h2>
-      <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
-        <input type="file" id="media-file-input" multiple accept="image/*,video/*" />
-        <button class="primary" id="media-upload-btn">開始上傳</button>
-        <div class="progress-wrap"><div class="progress-bar" id="media-progress-bar"></div></div>
+    <div id="trip-sub-itinerary" class="trip-subview active">
+      <div class="panel">
+        <h2>行程規劃</h2>
+        <textarea id="detail-itinerary"></textarea>
+        <div class="form-actions" style="margin-top:10px;">
+          <button class="primary" id="save-itinerary-btn">儲存行程規劃</button>
+        </div>
+        <div class="status-line" id="itinerary-status"></div>
       </div>
-      <div class="status-line" id="media-status"></div>
-      <div id="gallery"></div>
-      <div class="empty" id="media-empty" style="display:none;">目前還沒有照片或影片。</div>
     </div>
 
-    <div class="panel">
-      <h2>費用花費</h2>
-      <div class="form-grid">
-        <label class="field">日期<input type="date" id="expense-date" /></label>
-        <label class="field">類別<input type="text" id="expense-category" placeholder="交通/住宿/餐飲..." /></label>
-        <label class="field">說明<input type="text" id="expense-desc" placeholder="說明" /></label>
+    <div id="trip-sub-media" class="trip-subview">
+      <div class="panel">
+        <h2>照片 / 影片</h2>
+        <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
+          <input type="file" id="media-file-input" multiple accept="image/*,video/*" />
+          <button class="primary" id="media-upload-btn">開始上傳</button>
+          <div class="progress-wrap"><div class="progress-bar" id="media-progress-bar"></div></div>
+        </div>
+        <div class="status-line" id="media-status"></div>
+        <div id="gallery"></div>
+        <div class="empty" id="media-empty" style="display:none;">目前還沒有照片或影片。</div>
+      </div>
+    </div>
+
+    <div id="trip-sub-expenses" class="trip-subview">
+      <div class="panel">
+        <h2>費用花費</h2>
+        <div class="form-grid">
+          <label class="field">日期<input type="date" id="expense-date" /></label>
+          <label class="field">類別<input type="text" id="expense-category" placeholder="交通/住宿/餐飲..." /></label>
+          <label class="field">說明<input type="text" id="expense-desc" placeholder="說明" /></label>
         <label class="field">金額<input type="number" id="expense-amount" placeholder="0" /></label>
         <label class="field">幣別
           <select id="expense-currency">
@@ -252,26 +273,29 @@
       <div id="expenses-total"></div>
       <div class="empty" id="expenses-empty" style="display:none;">還沒有費用紀錄。</div>
     </div>
+    </div>
 
-    <div class="panel">
-      <h2>其他文件(電子機票、飯店訂單等)</h2>
-      <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
-        <select id="doc-type-select">
-          <option value="機票">機票</option>
-          <option value="飯店">飯店</option>
-          <option value="保險">保險</option>
-          <option value="其他">其他</option>
-        </select>
-        <input type="file" id="doc-file-input" multiple />
-        <button class="primary" id="doc-upload-btn">上傳文件</button>
-        <div class="progress-wrap"><div class="progress-bar" id="doc-progress-bar"></div></div>
+    <div id="trip-sub-documents" class="trip-subview">
+      <div class="panel">
+        <h2>其他文件(電子機票、飯店訂單等)</h2>
+        <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
+          <select id="doc-type-select">
+            <option value="機票">機票</option>
+            <option value="飯店">飯店</option>
+            <option value="保險">保險</option>
+            <option value="其他">其他</option>
+          </select>
+          <input type="file" id="doc-file-input" multiple />
+          <button class="primary" id="doc-upload-btn">上傳文件</button>
+          <div class="progress-wrap"><div class="progress-bar" id="doc-progress-bar"></div></div>
+        </div>
+        <div class="status-line" id="doc-status"></div>
+        <table>
+          <thead><tr><th>類型</th><th>檔名</th><th></th></tr></thead>
+          <tbody id="documents-tbody"></tbody>
+        </table>
+        <div class="empty" id="documents-empty" style="display:none;">還沒有上傳文件。</div>
       </div>
-      <div class="status-line" id="doc-status"></div>
-      <table>
-        <thead><tr><th>類型</th><th>檔名</th><th></th></tr></thead>
-        <tbody id="documents-tbody"></tbody>
-      </table>
-      <div class="empty" id="documents-empty" style="display:none;">還沒有上傳文件。</div>
     </div>
   </div>
 
@@ -443,20 +467,43 @@
   // ---------- 行程詳細 ----------
   document.getElementById("back-to-trips").addEventListener("click", () => switchView("trips"));
 
+  const tripSubLoaders = {
+    itinerary: async () => {}, // 開啟行程時已經帶入,不用另外載入
+    media: loadMedia,
+    expenses: loadExpenses,
+    documents: loadDocuments,
+  };
+  const loadedSubviews = new Set();
+
+  function switchTripSubview(name) {
+    document.querySelectorAll(".trip-subview").forEach((v) => v.classList.remove("active"));
+    document.getElementById(`trip-sub-${name}`).classList.add("active");
+    document.querySelectorAll("#trip-sub-nav button[data-sub]").forEach((b) => {
+      b.classList.toggle("active", b.dataset.sub === name);
+    });
+    if (!loadedSubviews.has(name)) {
+      loadedSubviews.add(name);
+      tripSubLoaders[name]();
+    }
+  }
+  document.querySelectorAll("#trip-sub-nav button[data-sub]").forEach((btn) => {
+    btn.addEventListener("click", () => switchTripSubview(btn.dataset.sub));
+  });
+
   async function openTrip(tripId) {
     currentTripId = tripId;
+    loadedSubviews.clear();
     const data = await apiFetch(`/api/trips/${tripId}`);
     const t = data.trip;
     document.getElementById("detail-title").textContent = `${t.country} · ${t.location}`;
     document.getElementById("detail-sub").textContent = t.date_end ? `${t.date_start} ~ ${t.date_end}` : t.date_start;
     document.getElementById("detail-itinerary").value = t.itinerary || "";
+    document.getElementById("itinerary-status").textContent = "";
 
     document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
     document.getElementById("view-trip-detail").classList.add("active");
 
-    await loadMedia();
-    await loadExpenses();
-    await loadDocuments();
+    switchTripSubview("itinerary");
   }
 
   document.getElementById("save-itinerary-btn").addEventListener("click", async () => {
