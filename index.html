@@ -367,7 +367,7 @@
           </select>
           <input type="file" id="doc-file-input" multiple />
           <button class="primary" id="doc-upload-btn">上傳文件</button>
-          <div class="progress-wrap"><div class="progress-bar" id="doc-progress-bar"></div></div>
+          <span class="status-line" id="doc-progress-count"></span>
         </div>
         <div class="status-line" id="doc-status"></div>
         <table>
@@ -955,8 +955,9 @@
     let completed = 0;
     countEl.textContent = `完成 ${completed}/${total}`;
 
-    for (const file of files) {
-      statusEl.textContent = `上傳中:${file.name}`;
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      statusEl.textContent = `處理第 ${i + 1}/${total} 個:${file.name}`;
       try {
         const initData = await apiFetch(`/api/trips/${currentTripId}/media/upload-init`, {
           method: "POST",
@@ -964,7 +965,7 @@
           body: JSON.stringify({ name: file.name, mimeType: file.type, size: file.size }),
         });
         const driveFile = await uploadWithProgress(initData.uploadUrl, file, file.type, (pct) => {
-          statusEl.textContent = `上傳中:${file.name}(${pct}%)`;
+          statusEl.textContent = `處理第 ${i + 1}/${total} 個:${file.name}(${pct}%)`;
         });
 
         await apiFetch(`/api/trips/${currentTripId}/media`, {
@@ -1058,14 +1059,18 @@
   document.getElementById("doc-upload-btn").addEventListener("click", async () => {
     const input = document.getElementById("doc-file-input");
     const statusEl = document.getElementById("doc-status");
-    const progressBar = document.getElementById("doc-progress-bar");
+    const countEl = document.getElementById("doc-progress-count");
     const docType = document.getElementById("doc-type-select").value;
     const files = Array.from(input.files || []);
     if (files.length === 0) { statusEl.textContent = "請先選擇檔案"; return; }
 
-    for (const file of files) {
-      statusEl.textContent = `準備上傳:${file.name}`;
-      progressBar.style.width = "0%";
+    const total = files.length;
+    let completed = 0;
+    countEl.textContent = `完成 ${completed}/${total}`;
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      statusEl.textContent = `處理第 ${i + 1}/${total} 個:${file.name}`;
       try {
         const initData = await apiFetch(`/api/trips/${currentTripId}/documents/upload-init`, {
           method: "POST",
@@ -1073,8 +1078,7 @@
           body: JSON.stringify({ name: file.name, mimeType: file.type, size: file.size }),
         });
         const driveFile = await uploadWithProgress(initData.uploadUrl, file, file.type, (pct) => {
-          progressBar.style.width = pct + "%";
-          statusEl.textContent = `上傳中:${file.name}(${pct}%)`;
+          statusEl.textContent = `處理第 ${i + 1}/${total} 個:${file.name}(${pct}%)`;
         });
         await apiFetch(`/api/trips/${currentTripId}/documents`, {
           method: "POST",
@@ -1084,6 +1088,8 @@
             webViewLink: driveFile.webViewLink, webContentLink: driveFile.webContentLink,
           }),
         });
+        completed++;
+        countEl.textContent = `完成 ${completed}/${total}`;
         statusEl.textContent = `完成:${file.name}`;
       } catch (err) {
         statusEl.textContent = `上傳失敗(${file.name}):${err.message}`;
