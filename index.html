@@ -322,7 +322,6 @@
         <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
           <input type="file" id="media-file-input" multiple accept="image/*,video/*" />
           <button class="primary" id="media-upload-btn">開始上傳</button>
-          <span class="status-line" id="media-progress-count"></span>
         </div>
         <div class="status-line" id="media-status"></div>
         <div id="gallery"></div>
@@ -370,7 +369,6 @@
           </select>
           <input type="file" id="doc-file-input" multiple />
           <button class="primary" id="doc-upload-btn">上傳文件</button>
-          <span class="status-line" id="doc-progress-count"></span>
         </div>
         <div class="status-line" id="doc-status"></div>
         <table>
@@ -1035,13 +1033,10 @@
   document.getElementById("media-upload-btn").addEventListener("click", async () => {
     const input = document.getElementById("media-file-input");
     const statusEl = document.getElementById("media-status");
-    const countEl = document.getElementById("media-progress-count");
     const files = Array.from(input.files || []);
     if (files.length === 0) { statusEl.textContent = "請先選擇檔案"; return; }
 
     const total = files.length;
-    let completed = 0;
-    countEl.textContent = `完成 ${completed}/${total}`;
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -1064,8 +1059,6 @@
             thumbnailLink: driveFile.thumbnailLink, webViewLink: driveFile.webViewLink, webContentLink: driveFile.webContentLink,
           }),
         });
-        completed++;
-        countEl.textContent = `完成 ${completed}/${total}`;
         statusEl.textContent = `完成:${file.name}`;
       } catch (err) {
         statusEl.textContent = `上傳失敗(${file.name}):${err.message}`;
@@ -1147,14 +1140,11 @@
   document.getElementById("doc-upload-btn").addEventListener("click", async () => {
     const input = document.getElementById("doc-file-input");
     const statusEl = document.getElementById("doc-status");
-    const countEl = document.getElementById("doc-progress-count");
     const docType = document.getElementById("doc-type-select").value;
     const files = Array.from(input.files || []);
     if (files.length === 0) { statusEl.textContent = "請先選擇檔案"; return; }
 
     const total = files.length;
-    let completed = 0;
-    countEl.textContent = `完成 ${completed}/${total}`;
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -1176,8 +1166,6 @@
             webViewLink: driveFile.webViewLink, webContentLink: driveFile.webContentLink,
           }),
         });
-        completed++;
-        countEl.textContent = `完成 ${completed}/${total}`;
         statusEl.textContent = `完成:${file.name}`;
       } catch (err) {
         statusEl.textContent = `上傳失敗(${file.name}):${err.message}`;
