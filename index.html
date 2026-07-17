@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>家族旅遊行程</title>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.snow.min.css" rel="stylesheet" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.min.js"></script>
 <style>
   :root {
     --bg: #0f2d2a;
@@ -135,6 +137,57 @@
   .sub-nav button.active { background: var(--gold); color: #201404; border-color: var(--gold); font-weight: 600; }
   .trip-subview { display: none; }
   .trip-subview.active { display: block; }
+
+  /* Quill 富文本編輯器 - 深色主題覆寫 */
+  #itinerary-toolbar.ql-toolbar.ql-snow {
+    background: var(--bg-softer);
+    border-color: var(--line);
+    border-radius: 8px 8px 0 0;
+  }
+  #itinerary-toolbar .ql-stroke { stroke: var(--paper); }
+  #itinerary-toolbar .ql-fill { fill: var(--paper); }
+  #itinerary-toolbar .ql-picker-label { color: var(--paper); }
+  #itinerary-toolbar .ql-picker-options { background: var(--bg-softer); }
+  #itinerary-toolbar button:hover .ql-stroke,
+  #itinerary-toolbar button.ql-active .ql-stroke { stroke: var(--gold); }
+  #itinerary-toolbar button:hover .ql-fill,
+  #itinerary-toolbar button.ql-active .ql-fill { fill: var(--gold); }
+  #itinerary-toolbar .ql-picker-label.ql-active,
+  #itinerary-toolbar .ql-picker-item.ql-selected { color: var(--gold); }
+  #bookmark-btn {
+    background: transparent; border: none; cursor: pointer; color: var(--paper);
+    font-size: 13px; padding: 4px 8px; border-radius: 4px;
+  }
+  #bookmark-btn:hover { color: var(--gold); }
+
+  #itinerary-editor.ql-container.ql-snow {
+    background: var(--bg-softer);
+    border-color: var(--line);
+    border-radius: 0 0 8px 8px;
+    font-size: 15px;
+    min-height: 420px;
+  }
+  #itinerary-editor .ql-editor {
+    color: var(--paper);
+    min-height: 420px;
+    line-height: 1.9;
+  }
+  #itinerary-editor .ql-editor.ql-blank::before { color: rgba(246,243,234,0.35); font-style: normal; }
+  #itinerary-editor .ql-editor img { max-width: 100%; border-radius: 8px; margin: 8px 0; }
+  #itinerary-editor .ql-editor a { color: var(--gold); text-decoration: underline; }
+  #itinerary-editor .ql-editor h1, #itinerary-editor .ql-editor h2, #itinerary-editor .ql-editor h3 {
+    color: var(--gold); font-family: Georgia, "Noto Serif TC", serif;
+  }
+  .ql-snow .ql-tooltip {
+    background: var(--bg-softer) !important;
+    border-color: var(--line) !important;
+    color: var(--paper) !important;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4) !important;
+  }
+  .ql-snow .ql-tooltip input[type=text] {
+    background: var(--bg); color: var(--paper); border: 1px solid var(--line);
+  }
+  .ql-snow .ql-tooltip a.ql-action::after { color: var(--gold); }
   .doc-type-tag { display: inline-block; background: var(--teal); color: var(--paper); font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-right: 8px; }
 </style>
 </head>
@@ -225,8 +278,10 @@
     <div id="trip-sub-itinerary" class="trip-subview active">
       <div class="panel">
         <h2>行程規劃</h2>
-        <textarea id="detail-itinerary"></textarea>
-        <div class="form-actions" style="margin-top:10px;">
+        <div id="itinerary-editor-wrap">
+          <div id="itinerary-editor"></div>
+        </div>
+        <div class="form-actions" style="margin-top:14px;">
           <button class="primary" id="save-itinerary-btn">儲存行程規劃</button>
         </div>
         <div class="status-line" id="itinerary-status"></div>
@@ -334,10 +389,83 @@
   let idToken = null;
   let userIsAdmin = false;
   let currentTripId = null;
+  let quillItinerary = null;
+
+  function initQuillItinerary() {
+    const toolbarOptions = [
+      [{ header: [2, 3, false] }],
+      ["bold", "italic", "underline", "strike"],
+      [{ color: [] }, { background: [] }],
+      [{ font: [] }],
+      [{ size: ["small", false, "large", "huge"] }],
+      [{ list: "ordered" }, { list: "bullet" }],
+      [{ align: [] }],
+      ["blockquote"],
+      ["link", "image"],
+      ["clean"],
+    ];
+
+    quillItinerary = new Quill("#itinerary-editor", {
+      theme: "snow",
+      placeholder: "在這裡規劃行程,可以用標題區分每一天,插入照片、超連結、醒目提醒色彩...",
+      modules: { toolbar: { container: toolbarOptions, handlers: { image: handleItineraryImageInsert } } },
+    });
+
+    // Quill 會自動在編輯區上方插入工具列,這裡取得它並套用深色主題樣式
+    const toolbarEl = quillItinerary.getModule("toolbar").container;
+    toolbarEl.id = "itinerary-toolbar";
+
+    // 加入「插入書籤」按鈕,方便超連結可以連到行程內的其他段落(例如 #bm-day2)
+    const bookmarkBtn = document.createElement("button");
+    bookmarkBtn.type = "button";
+    bookmarkBtn.id = "bookmark-btn";
+    bookmarkBtn.textContent = "������ 設為書籤";
+    bookmarkBtn.title = "先選取文字,點這裡設定書籤名稱,之後可以用超連結「#書籤名稱」跳到這段文字";
+    bookmarkBtn.addEventListener("click", () => {
+      const range = quillItinerary.getSelection();
+      if (!range || range.length === 0) { alert("請先選取一段文字,再設定書籤"); return; }
+      const name = prompt("輸入書籤名稱(建議用英文/數字,不要有空格),例如:day2");
+      if (!name) return;
+      const safeName = name.trim().replace(/\s+/g, "-");
+      const text = quillItinerary.getText(range.index, range.length);
+      quillItinerary.deleteText(range.index, range.length);
+      quillItinerary.clipboard.dangerouslyPasteHTML(range.index, `<span id="bm-${safeName}">${text}</span>`);
+      alert(`書籤已設定,之後插入超連結時,網址欄填「#bm-${safeName}」即可跳到這裡`);
+    });
+    toolbarEl.appendChild(bookmarkBtn);
+  }
+
+  async function handleItineraryImageInsert() {
+    if (!currentTripId) { alert("請先開啟一個行程"); return; }
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.onchange = async () => {
+      const file = input.files[0];
+      if (!file) return;
+      const range = quillItinerary.getSelection(true);
+      try {
+        const initData = await apiFetch(`/api/trips/${currentTripId}/media/upload-init`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: file.name, mimeType: file.type, size: file.size }),
+        });
+        const driveFile = await uploadWithProgress(initData.uploadUrl, file, file.type, () => {});
+        let imgUrl = driveFile.thumbnailLink || driveFile.webContentLink;
+        if (imgUrl) imgUrl = imgUrl.replace(/=s\d+$/, "=s1600");
+        quillItinerary.insertEmbed(range.index, "image", imgUrl);
+        quillItinerary.setSelection(range.index + 1);
+      } catch (err) {
+        alert("圖片上傳失敗:" + err.message);
+      }
+    };
+    input.click();
+  }
 
   function initGoogleSignIn() {
     google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: handleCredentialResponse });
     google.accounts.id.renderButton(document.getElementById("g_id_signin"), { theme: "outline", size: "large", text: "signin_with" });
+    initQuillItinerary();
   }
   window.onload = initGoogleSignIn;
 
@@ -497,7 +625,14 @@
     const t = data.trip;
     document.getElementById("detail-title").textContent = `${t.country} · ${t.location}`;
     document.getElementById("detail-sub").textContent = t.date_end ? `${t.date_start} ~ ${t.date_end}` : t.date_start;
-    document.getElementById("detail-itinerary").value = t.itinerary || "";
+
+    const itinerary = t.itinerary || "";
+    if (itinerary.includes("<") && itinerary.includes(">")) {
+      quillItinerary.root.innerHTML = itinerary;
+    } else {
+      // 相容舊版存的純文字行程規劃,把換行轉成段落
+      quillItinerary.setText(itinerary);
+    }
     document.getElementById("itinerary-status").textContent = "";
 
     document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
@@ -513,7 +648,7 @@
       await apiFetch(`/api/trips/${currentTripId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ itinerary: document.getElementById("detail-itinerary").value }),
+        body: JSON.stringify({ itinerary: quillItinerary.root.innerHTML }),
       });
       statusEl.textContent = "已儲存";
     } catch (err) {
