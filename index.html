@@ -372,10 +372,11 @@
   <div id="view-checklist" class="view">
     <div class="panel">
       <h2>待辦事項</h2>
-      <div style="display:flex; gap:10px; margin-bottom:16px;">
+      <div style="display:flex; gap:10px; margin-bottom:8px;">
         <input type="text" id="checklist-input" placeholder="新增待辦事項..." style="flex:1;" />
         <button class="primary" id="checklist-add-btn">新增</button>
       </div>
+      <div class="status-line" style="margin-bottom:16px;">提示:可用逗號分隔一次新增多筆,例如「充電器,牙刷,睡衣」會分成三筆待辦事項</div>
       <div id="checklist-list"></div>
       <div class="empty" id="checklist-empty" style="display:none;">目前沒有待辦事項。</div>
     </div>
@@ -669,10 +670,10 @@
     autoSaveTimer = setTimeout(() => saveCurrentDayContent(true), 1500);
   }
 
-  async function switchItineraryDay(date) {
+  function switchItineraryDay(date) {
     if (currentItineraryDate && currentItineraryDate !== date) {
       clearTimeout(autoSaveTimer);
-      await saveCurrentDayContent(true);
+      saveCurrentDayContent(true); // 背景儲存,不等待,畫面立即切換
     }
     currentItineraryDate = date;
     document.querySelectorAll(".day-tab").forEach((b) => b.classList.toggle("active", b.dataset.date === date));
@@ -1002,13 +1003,17 @@
 
   document.getElementById("checklist-add-btn").addEventListener("click", async () => {
     const input = document.getElementById("checklist-input");
-    const text = input.value.trim();
-    if (!text) return;
-    await apiFetch("/api/checklist", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
-    });
+    const raw = input.value.trim();
+    if (!raw) return;
+    // 支援用逗號(全形、半形皆可)一次輸入多筆待辦事項
+    const items = raw.split(/[,,]/).map((s) => s.trim()).filter(Boolean);
+    for (const text of items) {
+      await apiFetch("/api/checklist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+    }
     input.value = "";
     loadChecklist();
   });
