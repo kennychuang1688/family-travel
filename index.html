@@ -184,6 +184,9 @@
   #itinerary-editor .ql-editor.ql-blank::before { color: rgba(59,42,33,0.35); font-style: normal; }
   #itinerary-editor .ql-editor img { max-width: 100%; border-radius: 8px; margin: 8px 0; }
   #itinerary-editor .ql-editor a { color: var(--gold); text-decoration: underline; }
+  #itinerary-editor .ql-editor ul,
+  #itinerary-editor .ql-editor ol { padding-left: 0; }
+  #itinerary-editor .ql-editor li:not(.ql-direction-rtl)::before { margin-left: 0; margin-right: 0.5em; }
   #itinerary-editor .ql-editor li[data-list="checked"] > .ql-ui,
   #itinerary-editor .ql-editor li[data-list="unchecked"] > .ql-ui { filter: none; }
   #itinerary-editor .ql-editor li[data-list="checked"] { color: rgba(59,42,33,0.45); text-decoration: line-through; }
@@ -289,7 +292,6 @@
 
     <div id="trip-sub-itinerary" class="trip-subview active">
       <div class="panel">
-        <h2>行程規劃</h2>
         <div id="itinerary-day-tabs" class="day-tabs"></div>
         <div id="itinerary-editor-wrap">
           <div id="itinerary-editor"></div>
