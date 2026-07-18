@@ -984,8 +984,16 @@
           body: JSON.stringify({ name: file.name, mimeType: file.type, size: file.size }),
         });
         const driveFile = await uploadWithProgress(initData.uploadUrl, file, file.type, () => {});
-        let imgUrl = driveFile.thumbnailLink || driveFile.webContentLink;
-        if (imgUrl) imgUrl = imgUrl.replace(/=s\d+$/, "=s1600");
+        // 優先用檔案 id 直接組出 Drive 縮圖網址,這個格式很穩定,
+        // 不會像 thumbnailLink 那樣偶爾在檔案剛上傳完的瞬間還沒準備好;
+        // webContentLink 是設計給「下載」用的,不一定能直接當 <img> 顯示,所以放最後備援。
+        let imgUrl = driveFile.id
+          ? `https://drive.google.com/thumbnail?id=${driveFile.id}&sz=w1600`
+          : (driveFile.thumbnailLink || driveFile.webContentLink);
+        if (!imgUrl) {
+          alert("圖片已上傳,但沒有取得可用的圖片網址,請重新整理頁面後再試一次。");
+          return;
+        }
         quillItinerary.insertEmbed(range.index, "image", imgUrl);
         quillItinerary.setSelection(range.index + 1);
       } catch (err) {
