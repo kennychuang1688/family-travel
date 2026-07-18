@@ -427,34 +427,36 @@
         </div>
 
         <div id="flight-info-panel" style="display:none;">
-          <div class="form-grid">
-            <label class="field">方向
-              <select id="flight-direction">
-                <option value="outbound">去程</option>
-                <option value="return">回程</option>
-                <option value="other">其他</option>
-              </select>
-            </label>
-            <label class="field">日期<input type="date" id="flight-date" /></label>
-            <label class="field">航空公司<input type="text" id="flight-airline" placeholder="例如:長榮航空" /></label>
-            <label class="field">航班編號<input type="text" id="flight-no" placeholder="例如:BR116" /></label>
-          </div>
-          <div class="form-grid">
-            <label class="field">出發地名稱<input type="text" id="flight-dep-name" placeholder="例如:台北桃園機場" /></label>
-            <label class="field">航廈<input type="text" id="flight-dep-terminal" placeholder="例如:第二航廈" /></label>
-            <label class="field">出發代碼<input type="text" id="flight-dep-code" placeholder="例如:TPE" /></label>
-            <label class="field">出發時間<input type="text" id="flight-dep-time" placeholder="例如:09:20" /></label>
-          </div>
-          <div class="form-grid">
-            <label class="field">抵達地名稱<input type="text" id="flight-arr-name" placeholder="例如:札幌新千歲機場" /></label>
-            <label class="field">航廈<input type="text" id="flight-arr-terminal" placeholder="例如:國內線航廈" /></label>
-            <label class="field">抵達代碼<input type="text" id="flight-arr-code" placeholder="例如:CTS" /></label>
-            <label class="field">抵達時間<input type="text" id="flight-arr-time" placeholder="例如:14:40" /></label>
-          </div>
-          <div class="form-actions">
-            <button class="primary" id="flight-add-btn">新增航班</button>
-            <button class="ghost" id="flight-cancel-edit-btn" style="display:none;">取消編輯</button>
-            <span class="status-line" id="flight-status"></span>
+          <div id="flight-form-area">
+            <div class="form-grid">
+              <label class="field">方向
+                <select id="flight-direction">
+                  <option value="outbound">去程</option>
+                  <option value="return">回程</option>
+                  <option value="other">其他</option>
+                </select>
+              </label>
+              <label class="field">日期<input type="date" id="flight-date" /></label>
+              <label class="field">航空公司<input type="text" id="flight-airline" placeholder="例如:長榮航空" /></label>
+              <label class="field">航班編號<input type="text" id="flight-no" placeholder="例如:BR116" /></label>
+            </div>
+            <div class="form-grid">
+              <label class="field">出發地名稱<input type="text" id="flight-dep-name" placeholder="例如:台北桃園機場" /></label>
+              <label class="field">航廈<input type="text" id="flight-dep-terminal" placeholder="例如:第二航廈" /></label>
+              <label class="field">出發代碼<input type="text" id="flight-dep-code" placeholder="例如:TPE" /></label>
+              <label class="field">出發時間<input type="text" id="flight-dep-time" placeholder="例如:09:20" /></label>
+            </div>
+            <div class="form-grid">
+              <label class="field">抵達地名稱<input type="text" id="flight-arr-name" placeholder="例如:札幌新千歲機場" /></label>
+              <label class="field">航廈<input type="text" id="flight-arr-terminal" placeholder="例如:國內線航廈" /></label>
+              <label class="field">抵達代碼<input type="text" id="flight-arr-code" placeholder="例如:CTS" /></label>
+              <label class="field">抵達時間<input type="text" id="flight-arr-time" placeholder="例如:14:40" /></label>
+            </div>
+            <div class="form-actions">
+              <button class="primary" id="flight-add-btn">新增航班</button>
+              <button class="ghost" id="flight-cancel-edit-btn" style="display:none;">取消編輯</button>
+              <span class="status-line" id="flight-status"></span>
+            </div>
           </div>
 
           <div id="flight-cards-list" style="margin-top:20px;"></div>
@@ -1373,6 +1375,11 @@
   let flightMapInstance = null;
   let flightMarkersLayer = null;
   let editingFlightId = null;
+  let flightPanelMode = "preview"; // "preview":只看清單/地圖  "edit":顯示表單可新增/編輯
+
+  function applyFlightPanelMode() {
+    document.getElementById("flight-form-area").style.display = flightPanelMode === "edit" ? "block" : "none";
+  }
 
   const FLIGHT_FORM_FIELDS = [
     "flight-date", "flight-airline", "flight-no",
@@ -1487,6 +1494,8 @@
 
   function startEditFlight(f) {
     editingFlightId = f.id;
+    flightPanelMode = "edit";
+    applyFlightPanelMode();
     document.getElementById("flight-direction").value = f.direction || "outbound";
     document.getElementById("flight-date").value = f.flight_date || "";
     document.getElementById("flight-airline").value = f.airline || "";
@@ -1557,10 +1566,20 @@
   });
 
   function showFlightInfoPanel() {
+    const wasActive = document.getElementById("flight-info-tab-btn").classList.contains("active");
     document.querySelectorAll(".day-tab").forEach((b) => b.classList.remove("active"));
     document.getElementById("flight-info-tab-btn").classList.add("active");
     document.getElementById("itinerary-editor-wrap").style.display = "none";
     document.getElementById("flight-info-panel").style.display = "block";
+
+    if (wasActive) {
+      // 已經在航班資訊畫面時再按一次,切換預覽/編輯模式
+      flightPanelMode = flightPanelMode === "edit" ? "preview" : "edit";
+    } else {
+      // 從其他分頁切過來,一律先進入預覽模式
+      flightPanelMode = "preview";
+    }
+    applyFlightPanelMode();
     loadFlights();
   }
   document.getElementById("flight-info-tab-btn").addEventListener("click", showFlightInfoPanel);
