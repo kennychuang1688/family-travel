@@ -1517,28 +1517,37 @@
 
   function switchItineraryDay(date) {
     const isSameDay = currentItineraryDate === date;
-    if (currentItineraryDate && currentItineraryDate !== date) {
-      clearTimeout(autoSaveTimer);
-      saveCurrentDayContent(true); // 背景儲存,不等待,畫面立即切換
-    }
-    currentItineraryDate = date;
-    document.querySelectorAll(".day-tab").forEach((b) => b.classList.toggle("active", b.dataset.date === date));
-    document.getElementById("flight-info-panel").style.display = "none";
-    document.getElementById("itinerary-editor-wrap").style.display = "block";
-    const content = itineraryDayContents[date] || "";
-    if (content && content.includes("<")) {
-      quillItinerary.root.innerHTML = content;
-    } else {
-      quillItinerary.setText(content || "");
-    }
-    document.getElementById("itinerary-status").textContent = "已儲存";
 
-    if (isSameDay) {
-      // 已經在看這一天,再點一次同一個分頁,切換預覽/編輯模式
-      itineraryDayMode = itineraryDayMode === "edit" ? "preview" : "edit";
+    if (!isSameDay) {
+      // 切到不同的一天:先把目前這天的內容存起來,再載入新的一天的內容
+      if (currentItineraryDate) {
+        clearTimeout(autoSaveTimer);
+        saveCurrentDayContent(true); // 背景儲存,不等待,畫面立即切換
+      }
+      currentItineraryDate = date;
+      document.querySelectorAll(".day-tab").forEach((b) => b.classList.toggle("active", b.dataset.date === date));
+      document.getElementById("flight-info-panel").style.display = "none";
+      document.getElementById("itinerary-editor-wrap").style.display = "block";
+      const content = itineraryDayContents[date] || "";
+      if (content && content.includes("<")) {
+        quillItinerary.root.innerHTML = content;
+      } else {
+        quillItinerary.setText(content || "");
+      }
+      document.getElementById("itinerary-status").textContent = "已儲存";
+      itineraryDayMode = "preview"; // 切到不同的一天,一律先進入預覽模式
     } else {
-      // 切到不同的一天,一律先進入預覽模式
-      itineraryDayMode = "preview";
+      // 已經在看這一天,再點一次同一個分頁,只是切換預覽/編輯模式:
+      // 千萬不能重新載入內容(畫面上就是最新的,重新載入反而會蓋掉還沒存檔的修改)
+      if (itineraryDayMode === "edit") {
+        // 準備離開編輯模式,強制立即存檔,不要用會延遲 1.5 秒的自動存檔,
+        // 避免內容變成唯讀之後,剛打的東西其實還沒真的送到後端存起來
+        clearTimeout(autoSaveTimer);
+        saveCurrentDayContent(false);
+        itineraryDayMode = "preview";
+      } else {
+        itineraryDayMode = "edit";
+      }
     }
     applyItineraryDayMode();
   }
