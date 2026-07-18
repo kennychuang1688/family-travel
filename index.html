@@ -10,6 +10,7 @@
 <link href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" rel="stylesheet" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
   :root {
     --bg: #f7efe0;
@@ -108,7 +109,12 @@
   .form-actions { display: flex; gap: 10px; }
 
   #gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 14px; }
-  .media-card { background: var(--bg-softer); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .media-card { background: var(--bg-softer); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; position: relative; }
+  .media-select-checkbox {
+    position: absolute; top: 8px; left: 8px; z-index: 5;
+    width: 20px; height: 20px; cursor: pointer;
+    accent-color: var(--gold);
+  }
   .media-thumb { width: 100%; aspect-ratio: 4/3; background: var(--bg-softer); display: flex; align-items: center; justify-content: center; color: rgba(59,42,33,0.35); font-size: 12px; cursor: pointer; }
   .media-thumb img { width: 100%; height: 100%; object-fit: cover; }
 
@@ -478,6 +484,13 @@
           </div>
         </div>
         <div class="status-line" id="media-status"></div>
+        <div id="media-batch-bar" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px;">
+          <button class="ghost" id="media-select-all-btn">全選</button>
+          <button class="ghost" id="media-select-none-btn">取消全選</button>
+          <span class="status-line" id="media-selected-count">已選擇 0 張</span>
+          <button class="ghost" id="media-batch-download-btn" style="margin-left:auto;">批量下載</button>
+          <button class="danger" id="media-batch-delete-btn">批量刪除</button>
+        </div>
         <div id="gallery"></div>
         <div class="empty" id="media-empty" style="display:none;">目前還沒有照片或影片。</div>
       </div>
@@ -538,13 +551,23 @@
   <div id="view-checklist" class="view">
     <div class="panel">
       <h2>待辦事項</h2>
+      <h3 style="font-family: Georgia, 'Noto Serif TC', serif; color: var(--gold); font-weight: normal; font-size: 15px; margin: 0 0 10px;">旅遊前</h3>
       <div style="display:flex; gap:10px; margin-bottom:8px;">
-        <input type="text" id="checklist-input" placeholder="新增待辦事項..." style="flex:1;" />
-        <button class="primary" id="checklist-add-btn">新增</button>
+        <input type="text" id="checklist-input-before" placeholder="新增待辦事項..." style="flex:1;" />
+        <button class="primary" id="checklist-add-btn-before">新增</button>
       </div>
       <div class="status-line" style="margin-bottom:16px;">提示:可用逗號分隔一次新增多筆,例如「充電器,牙刷,睡衣」會分成三筆待辦事項</div>
-      <div id="checklist-list"></div>
-      <div class="empty" id="checklist-empty" style="display:none;">目前沒有待辦事項。</div>
+      <div id="checklist-list-before"></div>
+      <div class="empty" id="checklist-empty-before" style="display:none;">目前沒有「旅遊前」待辦事項。</div>
+
+      <h3 style="font-family: Georgia, 'Noto Serif TC', serif; color: var(--gold); font-weight: normal; font-size: 15px; margin: 28px 0 10px; padding-top: 20px; border-top: 1px solid var(--line);">旅遊期間</h3>
+      <div style="display:flex; gap:10px; margin-bottom:8px;">
+        <input type="text" id="checklist-input-during" placeholder="新增待辦事項..." style="flex:1;" />
+        <button class="primary" id="checklist-add-btn-during">新增</button>
+      </div>
+      <div class="status-line" style="margin-bottom:16px;">提示:可用逗號分隔一次新增多筆</div>
+      <div id="checklist-list-during"></div>
+      <div class="empty" id="checklist-empty-during" style="display:none;">目前沒有「旅遊期間」待辦事項。</div>
     </div>
   </div>
 
@@ -1611,6 +1634,7 @@
   async function openTrip(tripId) {
     currentTripId = tripId;
     loadedSubviews.clear();
+    selectedMediaIds.clear();
     const data = await apiFetch(`/api/trips/${tripId}`);
     const t = data.trip;
     document.getElementById("detail-title").textContent = `${t.country} · ${t.location}`;
@@ -1813,6 +1837,11 @@
   updateSortButtonLabels();
 
   let lastMediaItems = null;
+  let selectedMediaIds = new Set();
+
+  function updateMediaSelectedCount() {
+    document.getElementById("media-selected-count").textContent = `已選擇 ${selectedMediaIds.size} 張`;
+  }
 
   function renderGallery(items) {
     const gallery = document.getElementById("gallery");
@@ -1825,6 +1854,19 @@
     sortedItems.forEach((m, idx) => {
       const card = document.createElement("div");
       card.className = "media-card";
+
+      const selectCheckbox = document.createElement("input");
+      selectCheckbox.type = "checkbox";
+      selectCheckbox.className = "media-select-checkbox";
+      selectCheckbox.checked = selectedMediaIds.has(m.id);
+      selectCheckbox.title = "勾選以進行批量操作";
+      selectCheckbox.addEventListener("click", (e) => e.stopPropagation());
+      selectCheckbox.addEventListener("change", () => {
+        if (selectCheckbox.checked) selectedMediaIds.add(m.id);
+        else selectedMediaIds.delete(m.id);
+        updateMediaSelectedCount();
+      });
+      card.appendChild(selectCheckbox);
 
       const thumb = document.createElement("div");
       thumb.className = "media-thumb";
@@ -1905,7 +1947,89 @@
     const data = await apiFetch(`/api/trips/${currentTripId}/media`);
     lastMediaItems = data.media || [];
     renderGallery(lastMediaItems);
+    updateMediaSelectedCount();
   }
+
+  document.getElementById("media-select-all-btn").addEventListener("click", () => {
+    (lastMediaItems || []).forEach((m) => selectedMediaIds.add(m.id));
+    renderGallery(lastMediaItems || []);
+    updateMediaSelectedCount();
+  });
+  document.getElementById("media-select-none-btn").addEventListener("click", () => {
+    selectedMediaIds.clear();
+    renderGallery(lastMediaItems || []);
+    updateMediaSelectedCount();
+  });
+
+  document.getElementById("media-batch-delete-btn").addEventListener("click", async () => {
+    if (selectedMediaIds.size === 0) { alert("請先勾選要刪除的照片/影片"); return; }
+    if (!confirm(`確定要刪除選取的 ${selectedMediaIds.size} 個檔案嗎?這會同時刪除 Google Drive 上的檔案,且無法復原。`)) return;
+
+    const statusEl = document.getElementById("media-status");
+    const btn = document.getElementById("media-batch-delete-btn");
+    btn.disabled = true;
+    const ids = Array.from(selectedMediaIds);
+    let failed = 0;
+    for (let i = 0; i < ids.length; i++) {
+      statusEl.textContent = `刪除中 ${i + 1}/${ids.length}...`;
+      try {
+        await apiFetch(`/api/media/${ids[i]}`, { method: "DELETE" });
+      } catch (err) { failed++; }
+    }
+    selectedMediaIds.clear();
+    statusEl.textContent = failed > 0 ? `刪除完成,但有 ${failed} 個失敗` : "刪除完成";
+    btn.disabled = false;
+    loadMedia();
+  });
+
+  document.getElementById("media-batch-download-btn").addEventListener("click", async () => {
+    if (selectedMediaIds.size === 0) { alert("請先勾選要下載的照片/影片"); return; }
+    const statusEl = document.getElementById("media-status");
+    const btn = document.getElementById("media-batch-download-btn");
+    const items = (lastMediaItems || []).filter((m) => selectedMediaIds.has(m.id));
+    btn.disabled = true;
+    try {
+      const zip = new JSZip();
+      const usedNames = new Set();
+      for (let i = 0; i < items.length; i++) {
+        const m = items[i];
+        statusEl.textContent = `正在下載第 ${i + 1}/${items.length} 個:${m.name || ""}`;
+        const headers = {};
+        if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
+        const res = await fetch(`${WORKER_URL}/api/media/${m.id}/download`, { headers });
+        if (!res.ok) continue; // 單一檔案失敗就跳過,不讓整個批量下載中斷
+        const blob = await res.blob();
+
+        // 避免同名檔案在壓縮檔裡互相覆蓋
+        let name = m.name || `file_${i + 1}`;
+        let finalName = name;
+        let suffix = 1;
+        while (usedNames.has(finalName)) {
+          const dot = name.lastIndexOf(".");
+          finalName = dot > 0 ? `${name.slice(0, dot)}(${suffix})${name.slice(dot)}` : `${name}(${suffix})`;
+          suffix++;
+        }
+        usedNames.add(finalName);
+        zip.file(finalName, blob);
+      }
+
+      statusEl.textContent = "正在產生壓縮檔...";
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(zipBlob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${currentTripTitle || "photos"}_選取檔案.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      statusEl.textContent = "下載完成";
+    } catch (err) {
+      statusEl.textContent = "批量下載失敗:" + err.message;
+    } finally {
+      btn.disabled = false;
+    }
+  });
 
   document.getElementById("media-upload-btn").addEventListener("click", async () => {
     const input = document.getElementById("media-file-input");
@@ -2103,8 +2227,9 @@
       try {
         await apiFetch(`/api/checklist/${item.id}`, { method: "DELETE" });
         row.remove();
-        const list = document.getElementById("checklist-list");
-        document.getElementById("checklist-empty").style.display = list.children.length === 0 ? "block" : "none";
+        const phase = item.phase === "during" ? "during" : "before";
+        const list = document.getElementById(`checklist-list-${phase}`);
+        document.getElementById(`checklist-empty-${phase}`).style.display = list.children.length === 0 ? "block" : "none";
       } catch (err) {
         alert("移除失敗:" + err.message);
       }
@@ -2117,42 +2242,56 @@
   }
 
   async function loadChecklist() {
-    const list = document.getElementById("checklist-list");
-    const emptyEl = document.getElementById("checklist-empty");
-    list.innerHTML = "";
+    const listBefore = document.getElementById("checklist-list-before");
+    const listDuring = document.getElementById("checklist-list-during");
+    const emptyBefore = document.getElementById("checklist-empty-before");
+    const emptyDuring = document.getElementById("checklist-empty-during");
+    listBefore.innerHTML = "";
+    listDuring.innerHTML = "";
+
     const data = await apiFetch("/api/checklist");
     const items = data.items || [];
-    emptyEl.style.display = items.length === 0 ? "block" : "none";
-    for (const item of items) {
-      list.appendChild(renderChecklistRow(item));
-    }
+    const beforeItems = items.filter((i) => i.phase !== "during");
+    const duringItems = items.filter((i) => i.phase === "during");
+
+    emptyBefore.style.display = beforeItems.length === 0 ? "block" : "none";
+    emptyDuring.style.display = duringItems.length === 0 ? "block" : "none";
+    for (const item of beforeItems) listBefore.appendChild(renderChecklistRow(item));
+    for (const item of duringItems) listDuring.appendChild(renderChecklistRow(item));
   }
 
-  document.getElementById("checklist-add-btn").addEventListener("click", async () => {
-    const input = document.getElementById("checklist-input");
-    const raw = input.value.trim();
-    if (!raw) return;
-    // 支援用逗號(全形、半形皆可)一次輸入多筆待辦事項
-    const texts = raw.split(/[,,]/).map((s) => s.trim()).filter(Boolean);
-    const list = document.getElementById("checklist-list");
-    for (const text of texts) {
-      try {
-        const result = await apiFetch("/api/checklist", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text }),
-        });
-        list.appendChild(renderChecklistRow({ id: result.id, text, done: 0 }));
-      } catch (err) {
-        alert(`新增「${text}」失敗:` + err.message);
+  function setupChecklistAdder(phase) {
+    const input = document.getElementById(`checklist-input-${phase}`);
+    const addBtn = document.getElementById(`checklist-add-btn-${phase}`);
+    const list = document.getElementById(`checklist-list-${phase}`);
+    const emptyEl = document.getElementById(`checklist-empty-${phase}`);
+
+    addBtn.addEventListener("click", async () => {
+      const raw = input.value.trim();
+      if (!raw) return;
+      // 支援用逗號(全形、半形皆可)一次輸入多筆待辦事項
+      const texts = raw.split(/[,,]/).map((s) => s.trim()).filter(Boolean);
+      for (const text of texts) {
+        try {
+          const result = await apiFetch("/api/checklist", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text, phase }),
+          });
+          list.appendChild(renderChecklistRow({ id: result.id, text, done: 0, phase }));
+        } catch (err) {
+          alert(`新增「${text}」失敗:` + err.message);
+        }
       }
-    }
-    document.getElementById("checklist-empty").style.display = list.children.length === 0 ? "block" : "none";
-    input.value = "";
-  });
-  document.getElementById("checklist-input").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") document.getElementById("checklist-add-btn").click();
-  });
+      emptyEl.style.display = list.children.length === 0 ? "block" : "none";
+      input.value = "";
+    });
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") addBtn.click();
+    });
+  }
+  setupChecklistAdder("before");
+  setupChecklistAdder("during");
 
   // ---------- Log ----------
   async function loadLogs() {
