@@ -123,6 +123,36 @@
     max-width: 82vw; max-height: 76vh; width: 640px; height: 480px; border: none; border-radius: 8px; background: #000;
   }
   #lightbox-close { align-self: flex-end; }
+  .lightbox-caption-wrap { padding: 0 4px; }
+  .lightbox-caption-wrap input {
+    width: 100%; font-size: 13px; padding: 8px 10px;
+  }
+  .lightbox-nav-btn {
+    position: fixed;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 1001;
+    background: rgba(255,255,255,0.9);
+    border: none;
+    border-radius: 50%;
+    width: 46px;
+    height: 46px;
+    font-size: 26px;
+    line-height: 1;
+    color: var(--paper);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .lightbox-nav-btn:hover { background: #fff; color: var(--gold); }
+  .lightbox-nav-prev { left: 12px; }
+  .lightbox-nav-next { right: 12px; }
+  @media (max-width: 700px) {
+    .lightbox-nav-btn { width: 40px; height: 40px; font-size: 22px; }
+    .lightbox-nav-prev { left: 6px; }
+    .lightbox-nav-next { right: 6px; }
+  }
   .media-info { padding: 8px 10px; font-size: 12px; }
   .media-info input { width: 100%; margin-bottom: 6px; font-size: 12px; padding: 5px 6px; }
   .media-name { font-size: 11px; color: rgba(59,42,33,0.55); margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -261,6 +291,12 @@
   }
   .ql-snow .ql-tooltip a.ql-action::after { color: var(--gold); }
   .doc-type-tag { display: inline-block; background: var(--teal); color: var(--paper); font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-right: 8px; }
+  .sort-buttons { display: flex; gap: 8px; }
+  .sort-buttons .sort-btn {
+    background: transparent; border: 1px solid var(--line); color: rgba(59,42,33,0.7);
+    padding: 6px 14px; border-radius: 20px; cursor: pointer; font-size: 12px; white-space: nowrap;
+  }
+  .sort-buttons .sort-btn.active { background: var(--gold); color: #201404; border-color: var(--gold); font-weight: 600; }
 </style>
 </head>
 <body>
@@ -369,10 +405,10 @@
         <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
           <input type="file" id="media-file-input" multiple accept="image/*,video/*" />
           <button class="primary" id="media-upload-btn">開始上傳</button>
-          <select id="media-sort-select" style="margin-left:auto;">
-            <option value="taken">依實際拍攝時間排序</option>
-            <option value="name">依檔名排序</option>
-          </select>
+          <div id="media-sort-buttons" class="sort-buttons" style="margin-left:auto;">
+            <button type="button" class="sort-btn" data-sort="taken">依實際拍攝時間</button>
+            <button type="button" class="sort-btn" data-sort="name">依檔名</button>
+          </div>
         </div>
         <div class="status-line" id="media-status"></div>
         <div id="gallery"></div>
@@ -459,10 +495,15 @@
 </main>
 
 <div id="lightbox-overlay" class="lightbox-overlay" style="display:none;">
+  <button id="lightbox-prev" class="lightbox-nav-btn lightbox-nav-prev" aria-label="上一張" title="上一張">‹</button>
   <div class="lightbox-content">
     <button id="lightbox-close" class="ghost">✕ 關閉</button>
     <div id="lightbox-body"></div>
+    <div id="lightbox-caption-wrap" class="lightbox-caption-wrap">
+      <input type="text" id="lightbox-caption-input" placeholder="加上說明文字..." />
+    </div>
   </div>
+  <button id="lightbox-next" class="lightbox-nav-btn lightbox-nav-next" aria-label="下一張" title="下一張">›</button>
 </div>
 
 <div id="bm-picker-overlay" class="lightbox-overlay" style="display:none;">
@@ -480,8 +521,19 @@
   // =====================
 
   // ---------- 照片/影片預覽(Lightbox) ----------
-  function openLightbox(m) {
-    const overlay = document.getElementById("lightbox-overlay");
+  let lightboxItems = [];
+  let lightboxIndex = 0;
+
+  function openLightbox(items, index) {
+    lightboxItems = items || [];
+    lightboxIndex = index || 0;
+    renderLightboxContent();
+    document.getElementById("lightbox-overlay").style.display = "flex";
+  }
+
+  function renderLightboxContent() {
+    const m = lightboxItems[lightboxIndex];
+    if (!m) return;
     const body = document.getElementById("lightbox-body");
     body.innerHTML = "";
     if (m.drive_file_id) {
@@ -497,16 +549,65 @@
       link.textContent = "在 Google Drive 開啟";
       body.appendChild(link);
     }
-    overlay.style.display = "flex";
+
+    // 說明文字:顯示目前已加的文字,也可以直接在這裡編輯
+    const captionInput = document.getElementById("lightbox-caption-input");
+    captionInput.value = m.caption || "";
+    captionInput.onchange = async () => {
+      try {
+        await apiFetch(`/api/media/${m.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ caption: captionInput.value }),
+        });
+        m.caption = captionInput.value;
+        // 同步更新畫廊卡片上(如果還在畫面上)的說明文字,避免要重新整理才看得到
+        if (lastMediaItems) {
+          const orig = lastMediaItems.find((x) => x.id === m.id);
+          if (orig) orig.caption = captionInput.value;
+        }
+      } catch (err) {
+        alert("更新說明失敗:" + err.message);
+      }
+    };
+
+    // 只有一張時,隱藏上一張/下一張按鈕
+    const showNav = lightboxItems.length > 1;
+    document.getElementById("lightbox-prev").style.display = showNav ? "flex" : "none";
+    document.getElementById("lightbox-next").style.display = showNav ? "flex" : "none";
   }
+
+  function lightboxPrev() {
+    if (lightboxItems.length === 0) return;
+    lightboxIndex = (lightboxIndex - 1 + lightboxItems.length) % lightboxItems.length;
+    renderLightboxContent();
+  }
+
+  function lightboxNext() {
+    if (lightboxItems.length === 0) return;
+    lightboxIndex = (lightboxIndex + 1) % lightboxItems.length;
+    renderLightboxContent();
+  }
+
   function closeLightbox() {
     document.getElementById("lightbox-overlay").style.display = "none";
     document.getElementById("lightbox-body").innerHTML = "";
+    document.getElementById("lightbox-caption-input").onchange = null;
+    lightboxItems = [];
   }
   document.getElementById("lightbox-close").addEventListener("click", closeLightbox);
+  document.getElementById("lightbox-prev").addEventListener("click", lightboxPrev);
+  document.getElementById("lightbox-next").addEventListener("click", lightboxNext);
   document.getElementById("lightbox-overlay").addEventListener("click", (e) => {
     if (e.target.id === "lightbox-overlay") closeLightbox();
   });
+  document.addEventListener("keydown", (e) => {
+    if (document.getElementById("lightbox-overlay").style.display !== "flex") return;
+    if (e.key === "ArrowLeft") lightboxPrev();
+    else if (e.key === "ArrowRight") lightboxNext();
+    else if (e.key === "Escape") closeLightbox();
+  });
+
 
   let idToken = null;
   let userIsAdmin = false;
@@ -780,6 +881,28 @@
     const data = await res.json();
     if (!res.ok || data.error) throw new Error(data.error || "發生錯誤");
     return data;
+  }
+
+  // 透過我們自己的 Worker 下載檔案(而不是直接連到 Google Drive 的網址),
+  // 這樣不需要使用者裝置的瀏覽器對 google.com 有登入狀態,避免手機上出現 403 沒有權限的問題。
+  async function downloadFileViaWorker(path, filename) {
+    const headers = {};
+    if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
+    const res = await fetch(`${WORKER_URL}${path}`, { headers });
+    if (!res.ok) {
+      let message = "下載失敗";
+      try { const data = await res.json(); message = data.error || message; } catch (e) { /* 不是 JSON 就用預設訊息 */ }
+      throw new Error(message);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename || "download";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   }
 
   async function handleCredentialResponse(response) {
@@ -1275,7 +1398,10 @@
     }
   });
 
-  function sortMediaItems(items, sortBy) {
+  let mediaSortBy = "taken";
+  let mediaSortDir = "asc";
+
+  function sortMediaItems(items, sortBy, sortDir) {
     const sorted = [...items];
     if (sortBy === "name") {
       sorted.sort((a, b) => (a.name || "").localeCompare(b.name || "", undefined, { numeric: true }));
@@ -1287,12 +1413,33 @@
         return ta - tb;
       });
     }
+    if (sortDir === "desc") sorted.reverse();
     return sorted;
   }
 
-  document.getElementById("media-sort-select").addEventListener("change", () => {
-    if (lastMediaItems) renderGallery(lastMediaItems);
+  function updateSortButtonLabels() {
+    document.querySelectorAll("#media-sort-buttons .sort-btn").forEach((btn) => {
+      const isActive = btn.dataset.sort === mediaSortBy;
+      btn.classList.toggle("active", isActive);
+      const baseLabel = btn.dataset.sort === "name" ? "依檔名" : "依實際拍攝時間";
+      const arrow = !isActive ? "" : mediaSortDir === "asc" ? " ▲" : " ▼";
+      btn.textContent = baseLabel + arrow;
+    });
+  }
+
+  document.querySelectorAll("#media-sort-buttons .sort-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (mediaSortBy === btn.dataset.sort) {
+        mediaSortDir = mediaSortDir === "asc" ? "desc" : "asc";
+      } else {
+        mediaSortBy = btn.dataset.sort;
+        mediaSortDir = "asc";
+      }
+      updateSortButtonLabels();
+      if (lastMediaItems) renderGallery(lastMediaItems);
+    });
   });
+  updateSortButtonLabels();
 
   let lastMediaItems = null;
 
@@ -1302,17 +1449,16 @@
     gallery.innerHTML = "";
     emptyEl.style.display = items.length === 0 ? "block" : "none";
 
-    const sortBy = document.getElementById("media-sort-select").value;
-    const sortedItems = sortMediaItems(items, sortBy);
+    const sortedItems = sortMediaItems(items, mediaSortBy, mediaSortDir);
 
-    for (const m of sortedItems) {
+    sortedItems.forEach((m, idx) => {
       const card = document.createElement("div");
       card.className = "media-card";
 
       const thumb = document.createElement("div");
       thumb.className = "media-thumb";
       thumb.title = "點擊預覽";
-      thumb.addEventListener("click", () => openLightbox(m));
+      thumb.addEventListener("click", () => openLightbox(sortedItems, idx));
       if (m.thumbnail_link) {
         const img = document.createElement("img");
         img.src = m.thumbnail_link;
@@ -1340,6 +1486,7 @@
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ caption: captionInput.value }),
           });
+          m.caption = captionInput.value;
         } catch (err) { alert("更新說明失敗:" + err.message); }
       });
 
@@ -1348,12 +1495,23 @@
       const viewBtn = document.createElement("button");
       viewBtn.className = "ghost";
       viewBtn.textContent = "檢視";
-      viewBtn.addEventListener("click", () => openLightbox(m));
-      const downloadLink = document.createElement("a");
-      downloadLink.href = m.web_content_link || m.web_view_link || "#";
-      downloadLink.target = "_blank";
-      downloadLink.rel = "noopener";
+      viewBtn.addEventListener("click", () => openLightbox(sortedItems, idx));
+      const downloadLink = document.createElement("button");
+      downloadLink.className = "ghost";
       downloadLink.textContent = "下載";
+      downloadLink.addEventListener("click", async () => {
+        const original = downloadLink.textContent;
+        downloadLink.disabled = true;
+        downloadLink.textContent = "下載中...";
+        try {
+          await downloadFileViaWorker(`/api/media/${m.id}/download`, m.name || "download");
+        } catch (err) {
+          alert("下載失敗:" + err.message);
+        } finally {
+          downloadLink.disabled = false;
+          downloadLink.textContent = original;
+        }
+      });
       const deleteBtn = document.createElement("button");
       deleteBtn.className = "danger";
       deleteBtn.textContent = "刪除";
@@ -1374,7 +1532,7 @@
       card.appendChild(thumb);
       card.appendChild(info);
       gallery.appendChild(card);
-    }
+    });
   }
 
   async function loadMedia() {
@@ -1476,7 +1634,23 @@
 
     for (const d of items) {
       const tr = document.createElement("tr");
-      tr.innerHTML = `<td><span class="doc-type-tag">${d.doc_type}</span></td><td><a href="${d.web_content_link || d.web_view_link}" target="_blank" rel="noopener">${d.name}</a></td><td></td>`;
+      tr.innerHTML = `<td><span class="doc-type-tag">${d.doc_type}</span></td><td>${d.name}</td><td></td>`;
+      const downloadBtn = document.createElement("button");
+      downloadBtn.className = "ghost";
+      downloadBtn.textContent = "下載";
+      downloadBtn.addEventListener("click", async () => {
+        const original = downloadBtn.textContent;
+        downloadBtn.disabled = true;
+        downloadBtn.textContent = "下載中...";
+        try {
+          await downloadFileViaWorker(`/api/documents/${d.id}/download`, d.name || "download");
+        } catch (err) {
+          alert("下載失敗:" + err.message);
+        } finally {
+          downloadBtn.disabled = false;
+          downloadBtn.textContent = original;
+        }
+      });
       const deleteBtn = document.createElement("button");
       deleteBtn.className = "danger";
       deleteBtn.textContent = "刪除";
@@ -1485,6 +1659,7 @@
         await apiFetch(`/api/documents/${d.id}`, { method: "DELETE" });
         loadDocuments();
       });
+      tr.lastElementChild.appendChild(downloadBtn);
       tr.lastElementChild.appendChild(deleteBtn);
       tbody.appendChild(tr);
     }
