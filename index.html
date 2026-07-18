@@ -1398,7 +1398,9 @@
       btn.className = "day-tab";
       btn.dataset.date = date;
       const mmdd = date.slice(5).replace("-", "/");
-      btn.textContent = `第${idx + 1}天 ${mmdd}`;
+      const baseLabel = `第${idx + 1}天 ${mmdd}`;
+      btn.dataset.baseLabel = baseLabel;
+      btn.textContent = baseLabel;
       btn.addEventListener("click", () => switchItineraryDay(date));
       container.appendChild(btn);
     });
@@ -1430,7 +1432,27 @@
     autoSaveTimer = setTimeout(() => saveCurrentDayContent(true), 1500);
   }
 
+  let itineraryDayMode = "preview"; // "preview":唯讀,只能看  "edit":可以編輯
+
+  function applyItineraryDayMode() {
+    const toolbarEl = document.getElementById("itinerary-toolbar");
+    const isEdit = itineraryDayMode === "edit";
+    if (toolbarEl) toolbarEl.style.display = isEdit ? "" : "none";
+    if (quillItinerary) quillItinerary.enable(isEdit);
+
+    // 更新目前作用中那個日期分頁按鈕的文字,加上 (預)/(編) 後綴;其他分頁維持原本文字
+    document.querySelectorAll("#itinerary-day-tabs .day-tab").forEach((b) => {
+      const base = b.dataset.baseLabel || b.textContent;
+      if (b.dataset.date === currentItineraryDate) {
+        b.textContent = base + (isEdit ? "(編)" : "(預)");
+      } else {
+        b.textContent = base;
+      }
+    });
+  }
+
   function switchItineraryDay(date) {
+    const isSameDay = currentItineraryDate === date;
     if (currentItineraryDate && currentItineraryDate !== date) {
       clearTimeout(autoSaveTimer);
       saveCurrentDayContent(true); // 背景儲存,不等待,畫面立即切換
@@ -1446,6 +1468,15 @@
       quillItinerary.setText(content || "");
     }
     document.getElementById("itinerary-status").textContent = "已儲存";
+
+    if (isSameDay) {
+      // 已經在看這一天,再點一次同一個分頁,切換預覽/編輯模式
+      itineraryDayMode = itineraryDayMode === "edit" ? "preview" : "edit";
+    } else {
+      // 切到不同的一天,一律先進入預覽模式
+      itineraryDayMode = "preview";
+    }
+    applyItineraryDayMode();
   }
 
   // ---------- 航班資訊 ----------
@@ -1648,9 +1679,14 @@
   function showFlightInfoPanel() {
     const wasActive = document.getElementById("flight-info-tab-btn").classList.contains("active");
     document.querySelectorAll(".day-tab").forEach((b) => b.classList.remove("active"));
+    // 恢復日期分頁按鈕的文字(移除切到行程分頁時加上的 (預)/(編) 後綴)
+    document.querySelectorAll("#itinerary-day-tabs .day-tab").forEach((b) => {
+      b.textContent = b.dataset.baseLabel || b.textContent;
+    });
     document.getElementById("flight-info-tab-btn").classList.add("active");
     document.getElementById("itinerary-editor-wrap").style.display = "none";
     document.getElementById("flight-info-panel").style.display = "block";
+    currentItineraryDate = null; // 離開日期分頁,重置記錄,之後點回任何一天都會重新從預覽模式開始
 
     if (wasActive) {
       // 已經在航班資訊畫面時再按一次,切換預覽/編輯模式
