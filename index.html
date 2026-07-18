@@ -171,8 +171,12 @@
   #itinerary-toolbar .ql-picker-label.ql-active,
   #itinerary-toolbar .ql-picker-item.ql-selected { color: var(--gold); }
 
-  /* 清單已在最外層時,「減少縮排」會套用這個 class,讓整排(符號+文字)完全靠齊編輯區左邊緣 */
-  .ql-editor li.ql-list-flush-1 { padding-left: 0; }
+  /* 清單已在最外層時,「減少縮排」會套用這個 class,讓「這一行」單獨完全靠齊編輯區左邊緣,
+     不會影響同一個 <ul>/<ol> 容器裡沒有套用的其他兄弟項目 */
+  .ql-editor li.ql-list-flush-1 {
+    margin-left: -1.5em;
+    padding-left: 0;
+  }
   .ql-editor li.ql-list-flush-1::before {
     display: inline;
     margin-left: 0;
@@ -180,8 +184,6 @@
     width: auto;
     text-align: left;
   }
-  .ql-editor ul:has(> li.ql-list-flush-1),
-  .ql-editor ol:has(> li.ql-list-flush-1) { padding-left: 0; }
   #bookmark-btn, #bm-link-btn {
     background: transparent; border: 1px solid var(--line); cursor: pointer; color: var(--paper);
     font-size: 12px; padding: 4px 10px; border-radius: 6px; white-space: nowrap;
