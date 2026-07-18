@@ -563,17 +563,19 @@
     quillItinerary.getModule("toolbar").addHandler("indent", function (value) {
       const range = this.quill.getSelection();
       if (!range) return;
-      const [line] = this.quill.getLine(range.index);
-      const format = line ? line.formats() : {};
-      const currentIndent = parseInt(format.indent || 0, 10);
-
-      if (value === "-1" && currentIndent <= 0 && format.list) {
-        this.quill.formatLine(range.index, range.length || 1, { list: false, indent: false }, "user");
-        return;
-      }
-      const modifier = value === "+1" ? 1 : -1;
-      const nextIndent = Math.max(0, currentIndent + modifier);
-      this.quill.format("indent", nextIndent === 0 ? false : nextIndent, "user");
+      const lines = this.quill.getLines(range.index, range.length || 1);
+      lines.forEach((line) => {
+        const lineIndex = this.quill.getIndex(line);
+        const format = this.quill.getFormat(lineIndex, 1);
+        const currentIndent = parseInt(format.indent || 0, 10);
+        if (value === "-1" && currentIndent <= 0 && format.list) {
+          this.quill.formatLine(lineIndex, 1, { list: false, indent: false }, "user");
+        } else {
+          const modifier = value === "+1" ? 1 : -1;
+          const nextIndent = Math.max(0, currentIndent + modifier);
+          this.quill.formatLine(lineIndex, 1, "indent", nextIndent === 0 ? false : nextIndent, "user");
+        }
+      });
     });
 
     // 加入「插入書籤」按鈕,標記行程內文中的一段文字,之後可以用「插入書籤連結」跳過去
