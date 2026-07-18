@@ -476,7 +476,7 @@
         </h2>
         <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
           <input type="file" id="media-file-input" multiple accept="image/*,video/*" />
-          <button class="primary" id="media-upload-btn">開始上傳</button>
+          <button class="danger" id="media-upload-cancel-btn" style="display:none;">取消上傳</button>
           <div id="media-sort-buttons" class="sort-buttons" style="margin-left:auto;">
             <button type="button" class="sort-btn" data-sort="taken">依實際拍攝時間</button>
             <button type="button" class="sort-btn" data-sort="name">依檔名</button>
@@ -1096,7 +1096,7 @@
 
   // 分段上傳 + 自動重試:把檔案切成一段一段傳,若某一段因網路問題失敗,
   // 會先詢問 Google 目前實際收到多少內容,再從斷點接續,不用整個重傳。
-  function uploadWithProgress(url, file, mimeType, onProgress) {
+  function uploadWithProgress(url, file, mimeType, onProgress, cancelToken) {
     const CHUNK_SIZE = 8 * 1024 * 1024; // 8MB,需為 256KB 的倍數
     const MAX_RETRIES_PER_CHUNK = 5;
     const total = file.size;
@@ -1104,7 +1104,9 @@
 
     function putChunk(start, end) {
       return new Promise((resolve, reject) => {
+        if (cancelToken && cancelToken.cancelled) { reject(new Error("已取消上傳")); return; }
         const xhr = new XMLHttpRequest();
+        if (cancelToken) cancelToken.activeXhr = xhr;
         xhr.open("PUT", relayUrl, true);
         xhr.setRequestHeader("Authorization", `Bearer ${idToken}`);
         xhr.setRequestHeader("Content-Range", `bytes ${start}-${end - 1}/${total}`);
@@ -1122,6 +1124,7 @@
           }
         };
         xhr.onerror = () => reject(new Error("網路錯誤"));
+        xhr.onabort = () => reject(new Error("已取消上傳"));
         xhr.send(file.slice(start, end));
       });
     }
@@ -1165,6 +1168,7 @@
                 if (result.done) { resolve(result.data); return; }
                 advanced = true;
               } catch (err) {
+                if (cancelToken && cancelToken.cancelled) { reject(err); return; }
                 if (attempt >= MAX_RETRIES_PER_CHUNK) throw err;
                 await new Promise((r) => setTimeout(r, 800 * attempt));
                 const status = await queryProgress();
@@ -2008,15 +2012,22 @@
     }
   });
 
-  document.getElementById("media-upload-btn").addEventListener("click", async () => {
-    const input = document.getElementById("media-file-input");
+  let currentUploadCancel = null;
+
+  async function startMediaUpload(files) {
     const statusEl = document.getElementById("media-status");
-    const files = Array.from(input.files || []);
-    if (files.length === 0) { statusEl.textContent = "請先選擇檔案"; return; }
+    const cancelBtn = document.getElementById("media-upload-cancel-btn");
+    if (files.length === 0) return;
+
+    currentUploadCancel = { cancelled: false, activeXhr: null };
+    cancelBtn.style.display = "inline-block";
 
     const total = files.length;
-
     for (let i = 0; i < files.length; i++) {
+      if (currentUploadCancel.cancelled) {
+        statusEl.textContent = `已取消上傳(已完成 ${i}/${total} 個)`;
+        break;
+      }
       const file = files[i];
       statusEl.textContent = `處理第 ${i + 1}/${total} 個:${file.name}`;
       try {
@@ -2027,7 +2038,7 @@
         });
         const driveFile = await uploadWithProgress(initData.uploadUrl, file, file.type, (pct) => {
           statusEl.textContent = `處理第 ${i + 1}/${total} 個:${file.name}(${pct}%)`;
-        });
+        }, currentUploadCancel);
 
         await apiFetch(`/api/trips/${currentTripId}/media`, {
           method: "POST",
@@ -2039,11 +2050,33 @@
         });
         statusEl.textContent = `完成:${file.name}`;
       } catch (err) {
+        if (currentUploadCancel.cancelled) {
+          statusEl.textContent = `已取消上傳(已完成 ${i}/${total} 個)`;
+          break;
+        }
         statusEl.textContent = `上傳失敗(${file.name}):${err.message}`;
       }
     }
-    input.value = "";
+    cancelBtn.style.display = "none";
+    currentUploadCancel = null;
     loadMedia();
+  }
+
+  document.getElementById("media-file-input").addEventListener("change", async () => {
+    const input = document.getElementById("media-file-input");
+    const files = Array.from(input.files || []);
+    input.value = ""; // 立刻清空,避免殘留選取狀態影響下一次選檔
+    if (files.length === 0) return;
+    await startMediaUpload(files);
+  });
+
+  document.getElementById("media-upload-cancel-btn").addEventListener("click", () => {
+    if (!currentUploadCancel) return;
+    currentUploadCancel.cancelled = true;
+    if (currentUploadCancel.activeXhr) {
+      try { currentUploadCancel.activeXhr.abort(); } catch (e) { /* 忽略中斷時的例外 */ }
+    }
+    document.getElementById("media-status").textContent = "正在取消...";
   });
 
   // ---- 費用 ----
