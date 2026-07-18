@@ -170,12 +170,37 @@
   #itinerary-toolbar button.ql-active .ql-fill { fill: var(--gold); }
   #itinerary-toolbar .ql-picker-label.ql-active,
   #itinerary-toolbar .ql-picker-item.ql-selected { color: var(--gold); }
-  #bookmark-btn {
+  #bookmark-btn, #bm-link-btn {
     background: transparent; border: 1px solid var(--line); cursor: pointer; color: var(--paper);
     font-size: 12px; padding: 4px 10px; border-radius: 6px; white-space: nowrap;
     width: auto; height: auto; display: inline-flex; align-items: center; margin-left: 6px;
   }
-  #bookmark-btn:hover { color: var(--gold); border-color: var(--gold); }
+  #bookmark-btn:hover, #bm-link-btn:hover { color: var(--gold); border-color: var(--gold); }
+
+  /* 行程內文中的「書籤連結」樣式 */
+  .ql-editor a.itin-bm-link {
+    color: var(--teal);
+    text-decoration: underline;
+    cursor: pointer;
+  }
+  .ql-editor a.itin-bm-link::before { content: "↳ "; }
+  @keyframes bm-flash-anim {
+    0% { background: rgba(74,144,217,0.35); }
+    100% { background: transparent; }
+  }
+  .bm-flash { animation: bm-flash-anim 1.4s ease-out; border-radius: 3px; }
+
+  /* 書籤選擇視窗 */
+  .bm-picker-content { width: 380px; max-width: 90vw; }
+  .bm-picker-content h3 { font-family: Georgia, "Noto Serif TC", serif; color: var(--gold); font-weight: normal; margin: 0 0 12px; font-size: 16px; }
+  .bm-picker-list { max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+  .bm-picker-item {
+    text-align: left; background: var(--bg-softer); border: 1px solid var(--line); border-radius: 8px;
+    padding: 8px 10px; cursor: pointer; font-size: 13px; color: var(--paper);
+  }
+  .bm-picker-item:hover { border-color: var(--teal); }
+  .bm-picker-item .bm-day-tag { font-size: 11px; color: var(--teal); margin-right: 6px; }
+  .bm-picker-empty { text-align: center; color: rgba(59,42,33,0.45); font-size: 13px; padding: 20px 0; }
 
   .day-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
   .day-tabs .day-tab {
@@ -419,6 +444,14 @@
   </div>
 </div>
 
+<div id="bm-picker-overlay" class="lightbox-overlay" style="display:none;">
+  <div class="lightbox-content bm-picker-content">
+    <h3>選擇要連結的書籤</h3>
+    <div id="bm-picker-list" class="bm-picker-list"></div>
+    <button id="bm-picker-close" class="ghost">取消</button>
+  </div>
+</div>
+
 <script>
   // ====== 設定區 ======
   const GOOGLE_CLIENT_ID = "583386271797-l66a91s2og0bklu05tgo3nt81bl8ved2.apps.googleusercontent.com";
@@ -471,7 +504,6 @@
       [{ list: "ordered" }, { list: "bullet" }, { list: "check" }],
       [{ indent: "-1" }, { indent: "+1" }],
       [{ align: [] }],
-      ["blockquote"],
       ["link", "image"],
       ["clean"],
     ];
@@ -486,29 +518,133 @@
     const toolbarEl = quillItinerary.getModule("toolbar").container;
     toolbarEl.id = "itinerary-toolbar";
 
-    // 加入「插入書籤」按鈕,方便超連結可以連到行程內的其他段落(例如 #bm-day2)
+    // 加入「插入書籤」按鈕,標記行程內文中的一段文字,之後可以用「插入書籤連結」跳過去
     const bookmarkBtn = document.createElement("button");
     bookmarkBtn.type = "button";
     bookmarkBtn.id = "bookmark-btn";
     bookmarkBtn.textContent = "設為書籤";
-    bookmarkBtn.title = "先選取文字,點這裡設定書籤名稱,之後可以用超連結「#書籤名稱」跳到這段文字";
+    bookmarkBtn.title = "先選取文字,點這裡設定書籤名稱,之後可以用「插入書籤連結」跳到這段文字";
     bookmarkBtn.addEventListener("click", () => {
+      if (!currentItineraryDate) { alert("請先選擇一個日期分頁"); return; }
       const range = quillItinerary.getSelection();
       if (!range || range.length === 0) { alert("請先選取一段文字,再設定書籤"); return; }
-      const name = prompt("輸入書籤名稱(建議用英文/數字,不要有空格),例如:day2");
+      const name = prompt("輸入書籤名稱(建議用英文/數字,不要有空格),例如:kobe-night-view");
       if (!name) return;
-      const safeName = name.trim().replace(/\s+/g, "-");
+      const safeName = name.trim().replace(/\s+/g, "-").replace(/[^a-zA-Z0-9\-_\u4e00-\u9fff]/g, "");
+      if (!safeName) { alert("書籤名稱不合法,請重新輸入"); return; }
+      // 書籤 id 自動加上日期前綴,避免不同天的書籤互相撞名
+      const bmId = `bm-${currentItineraryDate}-${safeName}`;
       const text = quillItinerary.getText(range.index, range.length);
       quillItinerary.deleteText(range.index, range.length);
-      quillItinerary.clipboard.dangerouslyPasteHTML(range.index, `<span id="bm-${safeName}">${text}</span>`);
-      alert(`書籤已設定,之後插入超連結時,網址欄填「#bm-${safeName}」即可跳到這裡`);
+      quillItinerary.clipboard.dangerouslyPasteHTML(range.index, `<span id="${bmId}">${text}</span>`);
+      alert(`書籤已設定完成,之後可以用工具列上的「插入書籤連結」按鈕連到這裡。`);
     });
     toolbarEl.appendChild(bookmarkBtn);
+
+    // 加入「插入書籤連結」按鈕,從清單選擇書籤(取代手動輸入 #bm-xxx 網址,
+    // 因為那樣會被 Quill 誤判成外部網址、導致整頁重新整理並要求重新登入)
+    const bmLinkBtn = document.createElement("button");
+    bmLinkBtn.type = "button";
+    bmLinkBtn.id = "bm-link-btn";
+    bmLinkBtn.textContent = "插入書籤連結";
+    bmLinkBtn.title = "先選取文字,點這裡從書籤清單選擇要連去的地方";
+    bmLinkBtn.addEventListener("click", () => {
+      const range = quillItinerary.getSelection();
+      if (!range || range.length === 0) { alert("請先選取一段文字,再插入書籤連結"); return; }
+      openBookmarkPicker(range);
+    });
+    toolbarEl.appendChild(bmLinkBtn);
+
+    // 點擊內文中的書籤連結時,攔截預設行為(避免整頁跳轉/登出),
+    // 改成切換到正確的日期分頁並捲動到書籤位置
+    quillItinerary.root.addEventListener("click", (e) => {
+      const link = e.target.closest("a.itin-bm-link");
+      if (!link) return;
+      e.preventDefault();
+      navigateToBookmark(link.dataset.bmDay, link.dataset.bmId);
+    });
 
     quillItinerary.on("text-change", (delta, oldDelta, source) => {
       if (source === "user") scheduleAutoSave();
     });
   }
+
+  // ---------- 書籤連結(跨天內部跳轉) ----------
+
+  // 掃描所有天數的行程內容,找出目前存在的所有書籤(span id 以 "bm-" 開頭)
+  function collectBookmarks() {
+    if (currentItineraryDate) {
+      itineraryDayContents[currentItineraryDate] = quillItinerary.root.innerHTML;
+    }
+    const bookmarks = [];
+    const parser = new DOMParser();
+    for (const [date, html] of Object.entries(itineraryDayContents)) {
+      if (!html) continue;
+      const doc = parser.parseFromString(html, "text/html");
+      doc.querySelectorAll('span[id^="bm-"]').forEach((el) => {
+        bookmarks.push({ day: date, id: el.id, label: el.textContent.trim().slice(0, 40) || el.id });
+      });
+    }
+    bookmarks.sort((a, b) => a.day.localeCompare(b.day));
+    return bookmarks;
+  }
+
+  function openBookmarkPicker(range) {
+    const bookmarks = collectBookmarks();
+    const overlay = document.getElementById("bm-picker-overlay");
+    const listEl = document.getElementById("bm-picker-list");
+    listEl.innerHTML = "";
+
+    if (bookmarks.length === 0) {
+      listEl.innerHTML = `<div class="bm-picker-empty">目前還沒有任何書籤,請先用「設為書籤」標記想連結的位置。</div>`;
+    } else {
+      for (const bm of bookmarks) {
+        const mmdd = bm.day.slice(5).replace("-", "/");
+        const item = document.createElement("button");
+        item.type = "button";
+        item.className = "bm-picker-item";
+        item.innerHTML = `<span class="bm-day-tag">${mmdd}</span>${bm.label}`;
+        item.addEventListener("click", () => {
+          insertBookmarkLink(range, bm.day, bm.id);
+          overlay.style.display = "none";
+        });
+        listEl.appendChild(item);
+      }
+    }
+    overlay.style.display = "flex";
+  }
+
+  function insertBookmarkLink(range, day, bmId) {
+    const text = quillItinerary.getText(range.index, range.length);
+    quillItinerary.deleteText(range.index, range.length);
+    quillItinerary.clipboard.dangerouslyPasteHTML(
+      range.index,
+      `<a href="javascript:void(0)" class="itin-bm-link" data-bm-day="${day}" data-bm-id="${bmId}">${text}</a>`
+    );
+    scheduleAutoSave();
+  }
+
+  // 切換到書籤所在的日期分頁,並捲動、閃爍提示該位置
+  function navigateToBookmark(day, bmId) {
+    if (!day || !bmId) return;
+    if (day !== currentItineraryDate) {
+      switchItineraryDay(day);
+    }
+    requestAnimationFrame(() => {
+      const target = quillItinerary.root.querySelector(`#${CSS.escape(bmId)}`);
+      if (!target) { alert("找不到這個書籤,可能已經被刪除或改名。"); return; }
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+      target.classList.add("bm-flash");
+      setTimeout(() => target.classList.remove("bm-flash"), 1400);
+    });
+  }
+
+  document.getElementById("bm-picker-close").addEventListener("click", () => {
+    document.getElementById("bm-picker-overlay").style.display = "none";
+  });
+  document.getElementById("bm-picker-overlay").addEventListener("click", (e) => {
+    if (e.target.id === "bm-picker-overlay") document.getElementById("bm-picker-overlay").style.display = "none";
+  });
 
   async function handleItineraryImageInsert() {
     if (!currentTripId) { alert("請先開啟一個行程"); return; }
