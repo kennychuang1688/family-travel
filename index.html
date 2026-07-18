@@ -2065,6 +2065,31 @@
 
   let currentSortedMediaItems = [];
 
+  // 縮圖載入佇列:限制同一時間最多幾張圖片真正在下載/解碼,不完全依賴瀏覽器
+  // 自己的延遲載入判斷,避免手機在載入大量照片的行程時,同時間負擔太重而當機。
+  const IMAGE_LOAD_CONCURRENCY = 4;
+  let activeImageLoads = 0;
+  const imageLoadQueue = [];
+
+  function queueImageLoad(img, src) {
+    imageLoadQueue.push({ img, src });
+    processImageLoadQueue();
+  }
+
+  function processImageLoadQueue() {
+    while (activeImageLoads < IMAGE_LOAD_CONCURRENCY && imageLoadQueue.length > 0) {
+      const { img, src } = imageLoadQueue.shift();
+      activeImageLoads++;
+      const done = () => {
+        activeImageLoads--;
+        processImageLoadQueue();
+      };
+      img.addEventListener("load", done, { once: true });
+      img.addEventListener("error", done, { once: true });
+      img.src = src;
+    }
+  }
+
   function createMediaCard(m, idx) {
     const card = document.createElement("div");
     card.className = "media-card";
@@ -2088,13 +2113,13 @@
     thumb.addEventListener("click", () => openLightbox(currentSortedMediaItems, idx));
     // 用檔案 id 組網址,比存起來的 thumbnail_link 穩定(那個網址內建有時效性的授權,舊照片會失效)
     const thumbUrl = m.drive_file_id
-      ? `https://drive.google.com/thumbnail?id=${m.drive_file_id}&sz=w400`
+      ? `https://drive.google.com/thumbnail?id=${m.drive_file_id}&sz=w300`
       : m.thumbnail_link;
     if (thumbUrl) {
       const img = document.createElement("img");
-      img.src = thumbUrl;
       img.loading = "lazy";
       thumb.appendChild(img);
+      queueImageLoad(img, thumbUrl);
     } else {
       thumb.textContent = (m.mime_type || "").startsWith("video") ? "影片" : "檔案";
     }
@@ -2132,7 +2157,7 @@
   // 一開始只渲染前 60 張,捲到接近底部時再自動多渲染下一批。
   // 跟虛擬捲動不同的地方:這裡「只會新增,絕對不會移除」已經顯示出來的照片,
   // 邏輯簡單很多,不會有捲動時計算座標、清除重建造成的風險。
-  const MEDIA_BATCH_SIZE = 60;
+  const MEDIA_BATCH_SIZE = 18;
   let mediaRenderedCount = 0;
   let mediaObserver = null;
 
