@@ -121,8 +121,8 @@
   .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px,1fr)); gap: 12px; margin-bottom: 14px; }
   .form-actions { display: flex; gap: 10px; }
 
-  #gallery { position: relative; }
-  .media-card { background: var(--bg-softer); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; position: absolute; top: 0; left: 0; box-sizing: border-box; }
+  #gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 14px; }
+  .media-card { background: var(--bg-softer); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; position: relative; }
   .media-select-checkbox {
     display: none;
     position: absolute; top: 8px; left: 8px; z-index: 5;
@@ -857,7 +857,6 @@
 
     quillItinerary = new Quill("#itinerary-editor", {
       theme: "snow",
-      placeholder: "在這裡規劃行程,可以用標題區分每一天,插入照片、超連結、醒目提醒色彩...",
       modules: { toolbar: { container: toolbarOptions, handlers: { image: handleItineraryImageInsert } } },
     });
 
@@ -2129,122 +2128,54 @@
     return card;
   }
 
-  // ---------- 相簿虛擬捲動 ----------
-  // 不管有幾百幾千張照片,同一時間只有「畫面看得到的範圍(加一點緩衝)」會被建立成真正的
-  // DOM 元素,捲出畫面外的會被移除,大幅降低手機的記憶體與渲染負擔。
-  let mediaGridMetrics = { columns: 1, cardWidth: 160, rowHeight: 226, gap: 14 };
-  const renderedMediaCardEls = new Map(); // id -> 目前存在畫面上的卡片 DOM 元素
-  let mediaScrollRafPending = false;
+  // ---------- 相簿無限捲動 ----------
+  // 一開始只渲染前 60 張,捲到接近底部時再自動多渲染下一批。
+  // 跟虛擬捲動不同的地方:這裡「只會新增,絕對不會移除」已經顯示出來的照片,
+  // 邏輯簡單很多,不會有捲動時計算座標、清除重建造成的風險。
+  const MEDIA_BATCH_SIZE = 60;
+  let mediaRenderedCount = 0;
+  let mediaObserver = null;
 
-  function computeMediaGridMetrics() {
+  function renderNextMediaBatch() {
     const gallery = document.getElementById("gallery");
-    const containerWidth = gallery.clientWidth || 320;
-    const minCardWidth = 160;
-    const gap = 14;
-    const infoHeight = 56; // 對應 CSS 裡 .media-info 的固定高度
-    const columns = Math.max(1, Math.floor((containerWidth + gap) / (minCardWidth + gap)));
-    const cardWidth = (containerWidth - (columns - 1) * gap) / columns;
-    const thumbHeight = cardWidth * 0.75; // 對應縮圖的 aspect-ratio: 4/3
-    const rowHeight = thumbHeight + infoHeight + gap;
-    mediaGridMetrics = { columns, cardWidth, rowHeight, gap };
-  }
-
-  function positionMediaCard(el, idx) {
-    const { columns, cardWidth, rowHeight, gap } = mediaGridMetrics;
-    const row = Math.floor(idx / columns);
-    const col = idx % columns;
-    el.style.width = cardWidth + "px";
-    el.style.left = col * (cardWidth + gap) + "px";
-    el.style.top = row * rowHeight + "px";
-  }
-
-  function updateMediaGalleryHeight() {
-    const gallery = document.getElementById("gallery");
-    const totalRows = Math.ceil(currentSortedMediaItems.length / mediaGridMetrics.columns);
-    const totalHeight = Math.max(totalRows * mediaGridMetrics.rowHeight - mediaGridMetrics.gap, 0);
-    gallery.style.height = totalHeight + "px";
-  }
-
-  function renderVisibleMediaCards() {
-    const gallery = document.getElementById("gallery");
-    if (!gallery || gallery.clientWidth === 0) return; // 分頁還沒顯示出來,先不算,等切過來時會重新觸發
-    if (currentSortedMediaItems.length === 0) {
-      renderedMediaCardEls.forEach((el) => el.remove());
-      renderedMediaCardEls.clear();
-      return;
-    }
-
-    const { columns, rowHeight } = mediaGridMetrics;
-    const galleryTop = gallery.getBoundingClientRect().top + window.scrollY;
-    const viewportTop = window.scrollY;
-    const viewportBottom = window.scrollY + window.innerHeight;
-    const buffer = window.innerHeight; // 上下各多渲染一個螢幕高度當緩衝,捲動更順、不會捲一下就看到空白
-
-    const relativeTop = Math.max(0, viewportTop - galleryTop - buffer);
-    const relativeBottom = Math.max(0, viewportBottom - galleryTop + buffer);
-
-    const startRow = Math.floor(relativeTop / rowHeight);
-    const endRow = Math.ceil(relativeBottom / rowHeight);
-    const startIdx = Math.max(0, startRow * columns);
-    const endIdx = Math.min(currentSortedMediaItems.length, (endRow + 1) * columns);
-
-    const neededIds = new Set();
-    for (let idx = startIdx; idx < endIdx; idx++) {
-      const m = currentSortedMediaItems[idx];
-      neededIds.add(m.id);
-      let el = renderedMediaCardEls.get(m.id);
-      if (!el) {
-        el = createMediaCard(m, idx);
-        renderedMediaCardEls.set(m.id, el);
-        gallery.appendChild(el);
-      }
-      positionMediaCard(el, idx);
-    }
-
-    // 捲出可視範圍(含緩衝)外的卡片直接移除,釋放記憶體
-    renderedMediaCardEls.forEach((el, id) => {
-      if (!neededIds.has(id)) {
-        el.remove();
-        renderedMediaCardEls.delete(id);
-      }
+    const nextItems = currentSortedMediaItems.slice(mediaRenderedCount, mediaRenderedCount + MEDIA_BATCH_SIZE);
+    nextItems.forEach((m, i) => {
+      const idx = mediaRenderedCount + i;
+      gallery.appendChild(createMediaCard(m, idx));
     });
+    mediaRenderedCount += nextItems.length;
+    setupMediaObserver();
   }
 
-  function scheduleMediaRender() {
-    if (mediaScrollRafPending) return;
-    mediaScrollRafPending = true;
-    requestAnimationFrame(() => {
-      mediaScrollRafPending = false;
-      renderVisibleMediaCards();
-    });
-  }
+  function setupMediaObserver() {
+    if (mediaObserver) { mediaObserver.disconnect(); mediaObserver = null; }
+    if (mediaRenderedCount >= currentSortedMediaItems.length) return; // 已經全部載入完了
 
-  window.addEventListener("scroll", scheduleMediaRender, { passive: true });
-  window.addEventListener("resize", () => {
-    if (!currentSortedMediaItems.length) return;
-    computeMediaGridMetrics();
-    updateMediaGalleryHeight();
-    // 欄數/卡片寬度改變時,原本的絕對定位座標全部失效,乾脆清空重繪最保險
-    renderedMediaCardEls.forEach((el) => el.remove());
-    renderedMediaCardEls.clear();
-    renderVisibleMediaCards();
-  });
+    const gallery = document.getElementById("gallery");
+    const cards = gallery.querySelectorAll(".media-card");
+    const sentinel = cards[cards.length - 1]; // 觀察目前最後一張卡片,捲到它附近就載入下一批
+    if (!sentinel) return;
+
+    mediaObserver = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) {
+        mediaObserver.disconnect();
+        mediaObserver = null;
+        renderNextMediaBatch();
+      }
+    }, { rootMargin: "600px" }); // 提早一點觸發,捲動時比較不會看到空白
+    mediaObserver.observe(sentinel);
+  }
 
   function renderGallery(items) {
     const gallery = document.getElementById("gallery");
     const emptyEl = document.getElementById("media-empty");
+    gallery.innerHTML = "";
     emptyEl.style.display = items.length === 0 ? "block" : "none";
 
     currentSortedMediaItems = sortMediaItems(items, mediaSortBy, mediaSortDir);
-
-    // 重新排序/重新整理後,從頭開始渲染(捲回頂端的概念),避免舊座標殘留
-    renderedMediaCardEls.forEach((el) => el.remove());
-    renderedMediaCardEls.clear();
-    gallery.innerHTML = "";
-
-    computeMediaGridMetrics();
-    updateMediaGalleryHeight();
-    renderVisibleMediaCards();
+    mediaRenderedCount = 0;
+    if (mediaObserver) { mediaObserver.disconnect(); mediaObserver = null; }
+    renderNextMediaBatch();
   }
 
   async function loadMedia() {
