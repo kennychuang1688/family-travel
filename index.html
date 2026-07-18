@@ -110,10 +110,13 @@
   #gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 14px; }
   .media-card { background: var(--bg-softer); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; position: relative; }
   .media-select-checkbox {
+    display: none;
     position: absolute; top: 8px; left: 8px; z-index: 5;
     width: 20px; height: 20px; cursor: pointer;
     accent-color: var(--gold);
   }
+  #gallery.media-batch-edit-active .media-select-checkbox { display: block; }
+  #media-batch-edit-toggle-btn.active { background: var(--teal); color: var(--paper); border-color: var(--teal); font-weight: 600; }
   .media-thumb { width: 100%; aspect-ratio: 4/3; background: var(--bg-softer); display: flex; align-items: center; justify-content: center; color: rgba(59,42,33,0.35); font-size: 12px; cursor: pointer; }
   .media-thumb img { width: 100%; height: 100%; object-fit: cover; }
 
@@ -487,7 +490,8 @@
           <button class="ghost" id="media-select-all-btn">全選</button>
           <button class="ghost" id="media-select-none-btn">取消全選</button>
           <span class="status-line" id="media-selected-count">已選擇 0 張</span>
-          <button class="ghost" id="media-batch-download-btn" style="margin-left:auto;">批量下載</button>
+          <button class="ghost" id="media-batch-edit-toggle-btn" style="margin-left:auto;">編輯批量</button>
+          <button class="ghost" id="media-batch-download-btn">批量下載</button>
           <button class="danger" id="media-batch-delete-btn">批量刪除</button>
         </div>
         <div id="gallery"></div>
@@ -1638,6 +1642,7 @@
     currentTripId = tripId;
     loadedSubviews.clear();
     selectedMediaIds.clear();
+    mediaBatchEditMode = false;
     const data = await apiFetch(`/api/trips/${tripId}`);
     const t = data.trip;
     document.getElementById("detail-title").textContent = `${t.country} · ${t.location}`;
@@ -1697,6 +1702,7 @@
       const dayTabs = Array.from(document.querySelectorAll("#itinerary-day-tabs .day-tab"));
       let bodyHtml = `<h1>${document.getElementById("detail-title").textContent}</h1>`;
       bodyHtml += `<p>${document.getElementById("detail-sub").textContent}</p>`;
+
       // 航班資訊(不管使用者有沒有點開過航班資訊分頁,都直接重新抓一次最新資料)
       statusEl.textContent = "正在整理航班資訊...";
       let flightsForExport = [];
@@ -1841,10 +1847,21 @@
 
   let lastMediaItems = null;
   let selectedMediaIds = new Set();
+  let mediaBatchEditMode = false;
 
   function updateMediaSelectedCount() {
     document.getElementById("media-selected-count").textContent = `已選擇 ${selectedMediaIds.size} 張`;
   }
+
+  function applyMediaBatchEditMode() {
+    document.getElementById("gallery").classList.toggle("media-batch-edit-active", mediaBatchEditMode);
+    document.getElementById("media-batch-edit-toggle-btn").classList.toggle("active", mediaBatchEditMode);
+  }
+
+  document.getElementById("media-batch-edit-toggle-btn").addEventListener("click", () => {
+    mediaBatchEditMode = !mediaBatchEditMode;
+    applyMediaBatchEditMode();
+  });
 
   function renderGallery(items) {
     const gallery = document.getElementById("gallery");
@@ -1925,7 +1942,7 @@
         }
       });
       const deleteBtn = document.createElement("button");
-      deleteBtn.className = "danger";
+      deleteBtn.className = "ghost";
       deleteBtn.textContent = "刪除";
       deleteBtn.addEventListener("click", async () => {
         if (!confirm(`確定要刪除「${m.name}」嗎?這會同時刪除 Google Drive 上的檔案。`)) return;
@@ -1951,6 +1968,7 @@
     lastMediaItems = data.media || [];
     renderGallery(lastMediaItems);
     updateMediaSelectedCount();
+    applyMediaBatchEditMode();
   }
 
   document.getElementById("media-select-all-btn").addEventListener("click", () => {
