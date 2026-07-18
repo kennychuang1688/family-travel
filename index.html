@@ -178,12 +178,14 @@
   #bookmark-btn:hover, #bm-link-btn:hover { color: var(--gold); border-color: var(--gold); }
 
   /* 行程內文中的「書籤連結」樣式 */
-  .ql-editor a.itin-bm-link {
+  .ql-editor bm-mark { display: inline; }
+  .ql-editor bm-link {
+    display: inline;
     color: var(--teal);
     text-decoration: underline;
     cursor: pointer;
   }
-  .ql-editor a.itin-bm-link::before { content: "↳ "; }
+  .ql-editor bm-link::before { content: "↳ "; }
   @keyframes bm-flash-anim {
     0% { background: rgba(74,144,217,0.35); }
     100% { background: transparent; }
@@ -494,6 +496,44 @@
   let itineraryDayContents = {};
   let currentItineraryDate = null;
 
+  // ---------- 自訂 Quill 格式:書籤標記 / 書籤連結 ----------
+  // (一定要在 new Quill(...) 之前註冊,否則 Quill 不認得這個格式,
+  //  用 dangerouslyPasteHTML 塞入的自訂屬性會在 Quill 內部轉換時被直接丟棄)
+  (function registerBookmarkFormats() {
+    const InlineBlot = Quill.import("blots/inline");
+
+    class BmMarkBlot extends InlineBlot {
+      static create(value) {
+        const node = super.create();
+        node.setAttribute("data-bm-id", value);
+        return node;
+      }
+      static formats(node) {
+        return node.getAttribute("data-bm-id");
+      }
+    }
+    BmMarkBlot.blotName = "bmMark";
+    BmMarkBlot.tagName = "BM-MARK";
+
+    class BmLinkBlot extends InlineBlot {
+      static create(value) {
+        const node = super.create();
+        const data = typeof value === "string" ? JSON.parse(value) : value;
+        node.setAttribute("data-bm-day", data.day);
+        node.setAttribute("data-bm-id", data.id);
+        return node;
+      }
+      static formats(node) {
+        return JSON.stringify({ day: node.getAttribute("data-bm-day"), id: node.getAttribute("data-bm-id") });
+      }
+    }
+    BmLinkBlot.blotName = "bmLink";
+    BmLinkBlot.tagName = "BM-LINK";
+
+    Quill.register(BmMarkBlot, true);
+    Quill.register(BmLinkBlot, true);
+  })();
+
   function initQuillItinerary() {
     const toolbarOptions = [
       [{ header: [2, 3, false] }],
@@ -518,6 +558,24 @@
     const toolbarEl = quillItinerary.getModule("toolbar").container;
     toolbarEl.id = "itinerary-toolbar";
 
+    // 修正 Quill 內建限制:清單項目在最外層(縮排 0)時,預設「減少縮排」按鈕會沒有反應。
+    // 這裡改寫成:已經在最外層時,「減少縮排」直接把清單格式整個取消,變回一般段落。
+    quillItinerary.getModule("toolbar").addHandler("indent", function (value) {
+      const range = this.quill.getSelection();
+      if (!range) return;
+      const [line] = this.quill.getLine(range.index);
+      const format = line ? line.formats() : {};
+      const currentIndent = parseInt(format.indent || 0, 10);
+
+      if (value === "-1" && currentIndent <= 0 && format.list) {
+        this.quill.formatLine(range.index, range.length || 1, { list: false, indent: false }, "user");
+        return;
+      }
+      const modifier = value === "+1" ? 1 : -1;
+      const nextIndent = Math.max(0, currentIndent + modifier);
+      this.quill.format("indent", nextIndent === 0 ? false : nextIndent, "user");
+    });
+
     // 加入「插入書籤」按鈕,標記行程內文中的一段文字,之後可以用「插入書籤連結」跳過去
     const bookmarkBtn = document.createElement("button");
     bookmarkBtn.type = "button";
@@ -534,9 +592,7 @@
       if (!safeName) { alert("書籤名稱不合法,請重新輸入"); return; }
       // 書籤 id 自動加上日期前綴,避免不同天的書籤互相撞名
       const bmId = `bm-${currentItineraryDate}-${safeName}`;
-      const text = quillItinerary.getText(range.index, range.length);
-      quillItinerary.deleteText(range.index, range.length);
-      quillItinerary.clipboard.dangerouslyPasteHTML(range.index, `<span id="${bmId}">${text}</span>`);
+      quillItinerary.formatText(range.index, range.length, "bmMark", bmId, "user");
       alert(`書籤已設定完成,之後可以用工具列上的「插入書籤連結」按鈕連到這裡。`);
     });
     toolbarEl.appendChild(bookmarkBtn);
@@ -558,10 +614,10 @@
     // 點擊內文中的書籤連結時,攔截預設行為(避免整頁跳轉/登出),
     // 改成切換到正確的日期分頁並捲動到書籤位置
     quillItinerary.root.addEventListener("click", (e) => {
-      const link = e.target.closest("a.itin-bm-link");
+      const link = e.target.closest("bm-link");
       if (!link) return;
       e.preventDefault();
-      navigateToBookmark(link.dataset.bmDay, link.dataset.bmId);
+      navigateToBookmark(link.getAttribute("data-bm-day"), link.getAttribute("data-bm-id"));
     });
 
     quillItinerary.on("text-change", (delta, oldDelta, source) => {
@@ -581,8 +637,9 @@
     for (const [date, html] of Object.entries(itineraryDayContents)) {
       if (!html) continue;
       const doc = parser.parseFromString(html, "text/html");
-      doc.querySelectorAll('span[id^="bm-"]').forEach((el) => {
-        bookmarks.push({ day: date, id: el.id, label: el.textContent.trim().slice(0, 40) || el.id });
+      doc.querySelectorAll("bm-mark[data-bm-id]").forEach((el) => {
+        const id = el.getAttribute("data-bm-id");
+        bookmarks.push({ day: date, id, label: el.textContent.trim().slice(0, 40) || id });
       });
     }
     bookmarks.sort((a, b) => a.day.localeCompare(b.day));
@@ -615,13 +672,7 @@
   }
 
   function insertBookmarkLink(range, day, bmId) {
-    const text = quillItinerary.getText(range.index, range.length);
-    quillItinerary.deleteText(range.index, range.length);
-    quillItinerary.clipboard.dangerouslyPasteHTML(
-      range.index,
-      `<a href="javascript:void(0)" class="itin-bm-link" data-bm-day="${day}" data-bm-id="${bmId}">${text}</a>`
-    );
-    scheduleAutoSave();
+    quillItinerary.formatText(range.index, range.length, "bmLink", JSON.stringify({ day, id: bmId }), "user");
   }
 
   // 切換到書籤所在的日期分頁,並捲動、閃爍提示該位置
@@ -631,7 +682,7 @@
       switchItineraryDay(day);
     }
     requestAnimationFrame(() => {
-      const target = quillItinerary.root.querySelector(`#${CSS.escape(bmId)}`);
+      const target = quillItinerary.root.querySelector(`bm-mark[data-bm-id="${CSS.escape(bmId)}"]`);
       if (!target) { alert("找不到這個書籤,可能已經被刪除或改名。"); return; }
       target.scrollIntoView({ behavior: "smooth", block: "center" });
       target.classList.add("bm-flash");
