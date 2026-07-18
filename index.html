@@ -170,9 +170,16 @@
   #itinerary-toolbar button.ql-active .ql-fill { fill: var(--gold); }
   #itinerary-toolbar .ql-picker-label.ql-active,
   #itinerary-toolbar .ql-picker-item.ql-selected { color: var(--gold); }
-  /* 清單已在最外層時,「減少縮排」會套用這個 class,讓整排(符號+文字)再往左靠 */
-  .ql-editor li.ql-list-flush-1 { padding-left: 0.9em; }
-  .ql-editor li.ql-list-flush-1::before { margin-left: -0.9em; width: 0.85em; }
+
+  /* 清單已在最外層時,「減少縮排」會套用這個 class,讓整排(符號+文字)完全靠齊編輯區左邊緣 */
+  .ql-editor li.ql-list-flush-1 { padding-left: 0; }
+  .ql-editor li.ql-list-flush-1::before {
+    display: inline;
+    margin-left: 0;
+    margin-right: 0.3em;
+    width: auto;
+    text-align: left;
+  }
   .ql-editor ul:has(> li.ql-list-flush-1),
   .ql-editor ol:has(> li.ql-list-flush-1) { padding-left: 0; }
   #bookmark-btn, #bm-link-btn {
@@ -576,7 +583,7 @@
     // 修正 Quill 內建限制:清單項目在最外層(縮排 0)時,預設「減少縮排」按鈕會沒有反應。
     // 這裡改寫成:已經在最外層時,「減少縮排」直接把清單格式整個取消,變回一般段落。
     // 清單項目在最外層(indent=0)時,「減少縮排」不會取消清單,
-    // 而是再套用一階「listFlush」讓整排(項目符號+文字)一起往左移;
+    // 而是套用「listFlush」讓整排(項目符號+文字)一次完全靠齊編輯區左邊緣;
     // 「增加縮排」時如果目前是 flush 狀態,先取消 flush 再回到一般縮排邏輯。
     quillItinerary.getModule("toolbar").addHandler("indent", function (value) {
       const range = this.quill.getSelection();
