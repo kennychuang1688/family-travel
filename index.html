@@ -660,6 +660,7 @@
     if (!m) return;
     const body = document.getElementById("lightbox-body");
     body.innerHTML = "";
+
     const isImage = (m.mime_type || "").startsWith("image");
 
     if (isImage && (m.drive_file_id || m.thumbnail_link)) {
@@ -1078,6 +1079,7 @@
       body: JSON.stringify({ name: file.name, mimeType: file.type, size: file.size }),
     });
     const driveFile = await uploadWithProgress(initData.uploadUrl, file, file.type, () => {});
+
     // 把檔案設定成「連結可看」,這樣圖片顯示就不需要依賴瀏覽器當下有沒有 Google 登入狀態,
     // 不同電腦/瀏覽器都能穩定顯示(這是造成「這台電腦看得到、那台看不到」的根本原因)。
     if (driveFile.id) {
@@ -2080,10 +2082,17 @@
     while (activeImageLoads < IMAGE_LOAD_CONCURRENCY && imageLoadQueue.length > 0) {
       const { img, src } = imageLoadQueue.shift();
       activeImageLoads++;
+      let settled = false;
       const done = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeoutId);
         activeImageLoads--;
         processImageLoadQueue();
       };
+      // 逾時保護:萬一某張圖片(尤其是幫影片產生縮圖)卡住太久都沒回應,
+      // 8 秒後強制放棄這個名額,讓佇列繼續往下處理,不會整個卡死
+      const timeoutId = setTimeout(done, 8000);
       img.addEventListener("load", done, { once: true });
       img.addEventListener("error", done, { once: true });
       img.src = src;
@@ -2111,17 +2120,19 @@
     thumb.className = "media-thumb";
     thumb.title = "點擊預覽";
     thumb.addEventListener("click", () => openLightbox(currentSortedMediaItems, idx));
-    // 用檔案 id 組網址,比存起來的 thumbnail_link 穩定(那個網址內建有時效性的授權,舊照片會失效)
-    const thumbUrl = m.drive_file_id
-      ? `https://drive.google.com/thumbnail?id=${m.drive_file_id}&sz=w300`
-      : m.thumbnail_link;
+    const isVideo = (m.mime_type || "").startsWith("video");
+    // 影片一律不跟 Drive 要縮圖,直接顯示靜態圖示就好——大型影片檔案(例如上百 MB),
+    // Google 產生縮圖的行為可能不穩定或耗時很久,容易拖垮整個縮圖載入佇列。
+    const thumbUrl = isVideo
+      ? null
+      : (m.drive_file_id ? `https://drive.google.com/thumbnail?id=${m.drive_file_id}&sz=w300` : m.thumbnail_link);
     if (thumbUrl) {
       const img = document.createElement("img");
       img.loading = "lazy";
       thumb.appendChild(img);
       queueImageLoad(img, thumbUrl);
     } else {
-      thumb.textContent = (m.mime_type || "").startsWith("video") ? "影片" : "檔案";
+      thumb.textContent = isVideo ? "▶ 影片" : "檔案";
     }
 
     const info = document.createElement("div");
