@@ -7,6 +7,7 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.snow.min.css" rel="stylesheet" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js"></script>
 <style>
   :root {
     --bg: #f7efe0;
@@ -345,12 +346,16 @@
 
     <div id="trip-sub-itinerary" class="trip-subview active">
       <div class="panel">
-        <div id="itinerary-day-tabs" class="day-tabs"></div>
+        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:6px;">
+          <div id="itinerary-day-tabs" class="day-tabs" style="margin-bottom:0;"></div>
+          <button class="ghost" id="export-word-btn">轉成 Word 檔</button>
+        </div>
         <div id="itinerary-editor-wrap">
           <div id="itinerary-editor"></div>
         </div>
         <div class="form-actions" style="margin-top:14px;">
           <span class="status-line" id="itinerary-status">已儲存</span>
+          <span class="status-line" id="export-word-status"></span>
         </div>
       </div>
     </div>
@@ -509,6 +514,7 @@
   let quillItinerary = null;
   let itineraryDayContents = {};
   let currentItineraryDate = null;
+  let currentTripTitle = "";
 
   // ---------- 自訂 Quill 格式:書籤標記 / 書籤連結 ----------
   // (一定要在 new Quill(...) 之前註冊,否則 Quill 不認得這個格式,
@@ -1149,6 +1155,7 @@
     const t = data.trip;
     document.getElementById("detail-title").textContent = `${t.country} · ${t.location}`;
     document.getElementById("detail-sub").textContent = t.date_end ? `${t.date_start} ~ ${t.date_end}` : t.date_start;
+    currentTripTitle = `${t.country}_${t.location}`.replace(/[\\/:*?"<>|]/g, "");
 
     const days = computeDateRange(t.date_start, t.date_end);
     renderDayTabs(days);
@@ -1170,6 +1177,90 @@
 
     switchTripSubview("itinerary");
   }
+
+  // ---------- 匯出 Word 檔(整合所有天數的行程規劃) ----------
+
+  // html-docx-js 只支援內嵌的 base64 圖片,外部連結圖片(例如 Google Drive 縮圖)
+  // 需要先下載轉成 base64 才能正確顯示在 Word 檔裡
+  async function convertImageToDataURL(url) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("下載失敗");
+    const blob = await res.blob();
+    return await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(new Error("讀取失敗"));
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  async function exportItineraryToWord() {
+    if (!currentTripId) { alert("請先開啟一個行程"); return; }
+    const btn = document.getElementById("export-word-btn");
+    const statusEl = document.getElementById("export-word-status");
+    btn.disabled = true;
+    statusEl.textContent = "正在整理行程內容...";
+
+    try {
+      // 先把目前正在編輯的這一天內容同步進來,確保是最新版本
+      if (currentItineraryDate) {
+        itineraryDayContents[currentItineraryDate] = quillItinerary.root.innerHTML;
+      }
+
+      const dayTabs = Array.from(document.querySelectorAll("#itinerary-day-tabs .day-tab"));
+      let bodyHtml = `<h1>${document.getElementById("detail-title").textContent}</h1>`;
+      bodyHtml += `<p>${document.getElementById("detail-sub").textContent}</p>`;
+      for (const tab of dayTabs) {
+        const date = tab.dataset.date;
+        const label = tab.textContent;
+        const content = itineraryDayContents[date] || "<p>(尚無內容)</p>";
+        bodyHtml += `<h2>${label}(${date})</h2>${content}`;
+      }
+
+      statusEl.textContent = "正在處理圖片(數量多時可能需要一點時間)...";
+      const container = document.createElement("div");
+      container.innerHTML = bodyHtml;
+      const images = Array.from(container.querySelectorAll('img[src^="http"]'));
+      let failedImages = 0;
+      await Promise.all(images.map(async (img) => {
+        try {
+          img.src = await convertImageToDataURL(img.src);
+        } catch (err) {
+          failedImages++;
+          img.remove(); // 下載失敗(例如 Drive 權限限制)就移除,避免 Word 開啟時出現無效圖片
+        }
+      }));
+
+      const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+        body { font-family: "Microsoft JhengHei", "Noto Sans TC", sans-serif; font-size: 12pt; }
+        h1 { color: #B8791E; }
+        h2 { color: #2F6FA8; border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-top: 28px; }
+        img { max-width: 500px; }
+      </style></head><body>${container.innerHTML}</body></html>`;
+
+      statusEl.textContent = "正在產生 Word 檔...";
+      const converted = htmlDocx.asBlob(fullHtml);
+      const filename = `${currentTripTitle || "行程"}.docx`;
+      const url = URL.createObjectURL(converted);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+
+      statusEl.textContent = failedImages > 0
+        ? `已下載完成(${failedImages} 張圖片因無法存取而略過)`
+        : "已下載完成";
+    } catch (err) {
+      statusEl.textContent = "轉換失敗:" + err.message;
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  document.getElementById("export-word-btn").addEventListener("click", exportItineraryToWord);
 
   // ---- 相簿 ----
   document.getElementById("sync-media-btn").addEventListener("click", async () => {
