@@ -1040,6 +1040,14 @@
       body: JSON.stringify({ name: file.name, mimeType: file.type, size: file.size }),
     });
     const driveFile = await uploadWithProgress(initData.uploadUrl, file, file.type, () => {});
+    // 把檔案設定成「連結可看」,這樣圖片顯示就不需要依賴瀏覽器當下有沒有 Google 登入狀態,
+    // 不同電腦/瀏覽器都能穩定顯示(這是造成「這台電腦看得到、那台看不到」的根本原因)。
+    if (driveFile.id) {
+      try {
+        await apiFetch(`/api/drive/files/${driveFile.id}/make-public`, { method: "POST" });
+      } catch (e) { /* 設定失敗也不影響圖片插入,只是顯示穩定度可能較差 */ }
+    }
+
     // 優先用檔案 id 直接組出 Drive 縮圖網址,這個格式很穩定,
     // 不會像 thumbnailLink 那樣偶爾在檔案剛上傳完的瞬間還沒準備好;
     // webContentLink 是設計給「下載」用的,不一定能直接當 <img> 顯示,所以放最後備援。
