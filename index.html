@@ -913,6 +913,48 @@
       window.open(href, "_blank", "noopener");
     });
 
+    // 攔截「貼上圖片」(Ctrl+V)與「拖曳圖片」,改成跟按插入圖片按鈕一樣自動上傳到雲端。
+    // 如果不攔截,Quill 預設會把圖片整個轉成一長串 base64 文字直接塞進內容裡,
+    // 存檔時很容易超過資料庫單一欄位的大小上限(SQLITE_TOOBIG),而且內容也會變得很肥大、載入變慢。
+    async function handlePastedOrDroppedImage(file, index) {
+      const statusEl = document.getElementById("itinerary-status");
+      statusEl.textContent = "圖片上傳中...";
+      try {
+        await uploadAndInsertItineraryImage(file, index);
+        statusEl.textContent = "已儲存";
+      } catch (err) {
+        alert("圖片上傳失敗:" + err.message);
+      }
+    }
+
+    quillItinerary.root.addEventListener("paste", (e) => {
+      if (!currentTripId) return;
+      const items = (e.clipboardData || window.clipboardData)?.items;
+      if (!items) return;
+      for (const item of items) {
+        if (item.kind === "file" && item.type.startsWith("image/")) {
+          const file = item.getAsFile();
+          if (!file) continue;
+          e.preventDefault();
+          const range = quillItinerary.getSelection(true) || { index: quillItinerary.getLength() };
+          handlePastedOrDroppedImage(file, range.index);
+          break;
+        }
+      }
+    });
+
+    quillItinerary.root.addEventListener("drop", (e) => {
+      if (!currentTripId) return;
+      const files = e.dataTransfer?.files;
+      if (!files || files.length === 0) return;
+      const imageFile = Array.from(files).find((f) => f.type.startsWith("image/"));
+      if (!imageFile) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const range = quillItinerary.getSelection(true) || { index: quillItinerary.getLength() };
+      handlePastedOrDroppedImage(imageFile, range.index);
+    });
+
     quillItinerary.on("text-change", (delta, oldDelta, source) => {
       if (source === "user") scheduleAutoSave();
     });
@@ -990,6 +1032,28 @@
     if (e.target.id === "bm-picker-overlay") document.getElementById("bm-picker-overlay").style.display = "none";
   });
 
+  // 把圖片檔案上傳到 Drive,並插入到目前游標位置(插入圖片按鈕、貼上圖片、拖曳圖片都共用這個)
+  async function uploadAndInsertItineraryImage(file, index) {
+    const initData = await apiFetch(`/api/trips/${currentTripId}/media/upload-init`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: file.name, mimeType: file.type, size: file.size }),
+    });
+    const driveFile = await uploadWithProgress(initData.uploadUrl, file, file.type, () => {});
+    // 優先用檔案 id 直接組出 Drive 縮圖網址,這個格式很穩定,
+    // 不會像 thumbnailLink 那樣偶爾在檔案剛上傳完的瞬間還沒準備好;
+    // webContentLink 是設計給「下載」用的,不一定能直接當 <img> 顯示,所以放最後備援。
+    let imgUrl = driveFile.id
+      ? `https://drive.google.com/thumbnail?id=${driveFile.id}&sz=w1600`
+      : (driveFile.thumbnailLink || driveFile.webContentLink);
+    if (!imgUrl) {
+      alert("圖片已上傳,但沒有取得可用的圖片網址,請重新整理頁面後再試一次。");
+      return;
+    }
+    quillItinerary.insertEmbed(index, "image", imgUrl);
+    quillItinerary.setSelection(index + 1);
+  }
+
   async function handleItineraryImageInsert() {
     if (!currentTripId) { alert("請先開啟一個行程"); return; }
     const input = document.createElement("input");
@@ -1000,24 +1064,7 @@
       if (!file) return;
       const range = quillItinerary.getSelection(true);
       try {
-        const initData = await apiFetch(`/api/trips/${currentTripId}/media/upload-init`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: file.name, mimeType: file.type, size: file.size }),
-        });
-        const driveFile = await uploadWithProgress(initData.uploadUrl, file, file.type, () => {});
-        // 優先用檔案 id 直接組出 Drive 縮圖網址,這個格式很穩定,
-        // 不會像 thumbnailLink 那樣偶爾在檔案剛上傳完的瞬間還沒準備好;
-        // webContentLink 是設計給「下載」用的,不一定能直接當 <img> 顯示,所以放最後備援。
-        let imgUrl = driveFile.id
-          ? `https://drive.google.com/thumbnail?id=${driveFile.id}&sz=w1600`
-          : (driveFile.thumbnailLink || driveFile.webContentLink);
-        if (!imgUrl) {
-          alert("圖片已上傳,但沒有取得可用的圖片網址,請重新整理頁面後再試一次。");
-          return;
-        }
-        quillItinerary.insertEmbed(range.index, "image", imgUrl);
-        quillItinerary.setSelection(range.index + 1);
+        await uploadAndInsertItineraryImage(file, range.index);
       } catch (err) {
         alert("圖片上傳失敗:" + err.message);
       }
@@ -1411,6 +1458,15 @@
     const html = quillItinerary.root.innerHTML;
     itineraryDayContents[currentItineraryDate] = html;
     const statusEl = document.getElementById("itinerary-status");
+
+    // 資料庫單一欄位上限是 2MB,提早檢查、給明確提示,不要等後端回傳不容易懂的錯誤才發現
+    const sizeInBytes = new Blob([html]).size;
+    const SAFE_LIMIT = 1.8 * 1024 * 1024; // 留一點安全空間,不要卡在剛好 2MB 的邊界
+    if (sizeInBytes > SAFE_LIMIT) {
+      statusEl.textContent = `儲存失敗:這一天的內容太大(約 ${(sizeInBytes / 1024 / 1024).toFixed(1)}MB),超過資料庫單一欄位 2MB 的上限。通常是有圖片被直接嵌入內容裡(而不是用連結),請找出來刪除,改用「插入圖片」按鈕重新加入。`;
+      return;
+    }
+
     if (!silent) statusEl.textContent = "儲存中...";
     try {
       await apiFetch(`/api/trips/${currentTripId}/itinerary-days/${currentItineraryDate}`, {
