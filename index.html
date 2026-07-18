@@ -11,6 +11,20 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js"></script>
 <style>
+  /* 自訂字型:芫荽體(字型檔放在網站根目錄下的 fonts 資料夾) */
+  @font-face {
+    font-family: "Iansui";
+    src: url("./Iansui-Regular.woff2") format("woff2");
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+  }
+  .ql-editor .ql-font-iansui { font-family: "Iansui", "Noto Sans TC", sans-serif; }
+  #itinerary-toolbar .ql-font .ql-picker-label[data-value="iansui"]::before,
+  #itinerary-toolbar .ql-font .ql-picker-item[data-value="iansui"]::before {
+    content: "芫荽體";
+    font-family: "Iansui", "Noto Sans TC", sans-serif;
+  }
   :root {
     --bg: #f7efe0;
     --bg-soft: #ffffff;
@@ -758,6 +772,12 @@
       whitelist: ["1"],
     });
     Quill.register(ListFlush, true);
+    // 擴充字型下拉選單的白名單,加入自訂的中文字型(芫荽體)
+    const FontAttributor = new Parchment.Attributor.Class("font", "ql-font", {
+      scope: Parchment.Scope.INLINE,
+      whitelist: ["serif", "monospace", "iansui"],
+    });
+    Quill.register(FontAttributor, true);
   })();
 
   function initQuillItinerary() {
@@ -765,7 +785,7 @@
       [{ header: [2, 3, false] }],
       ["bold", "italic", "underline", "strike"],
       [{ color: [] }, { background: [] }],
-      [{ font: [] }],
+      [{ font: [false, "iansui"] }],
       [{ size: ["small", false, "large", "huge"] }],
       [{ list: "ordered" }, { list: "bullet" }, { list: "check" }],
       [{ indent: "-1" }, { indent: "+1" }],
