@@ -7,6 +7,8 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.snow.min.css" rel="stylesheet" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.min.js"></script>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" rel="stylesheet" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js"></script>
 <style>
   :root {
@@ -256,6 +258,28 @@
   }
   .day-tabs .day-tab.active { background: var(--teal); color: var(--paper); border-color: var(--teal); font-weight: 600; }
 
+  .flight-info-tab {
+    flex-shrink: 0;
+    background: var(--bg-softer); border: 1px solid var(--line); color: rgba(59,42,33,0.7);
+    padding: 7px 14px; border-radius: 16px; cursor: pointer; font-size: 12px; white-space: nowrap;
+  }
+  .flight-info-tab.active { background: var(--gold); color: #201404; border-color: var(--gold); font-weight: 600; }
+
+  .flight-card {
+    background: var(--bg-softer); border: 1px solid var(--line); border-radius: 10px;
+    padding: 16px; margin-bottom: 14px; position: relative;
+  }
+  .flight-card-header { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 10px; color: rgba(59,42,33,0.6); }
+  .flight-card-header .flight-no { font-weight: 600; color: var(--paper); }
+  .flight-card-route { display: flex; align-items: center; gap: 18px; }
+  .flight-endpoint { flex: 1; }
+  .flight-endpoint .flight-code { font-size: 22px; font-weight: 700; color: var(--gold); }
+  .flight-endpoint .flight-time { font-size: 15px; margin-top: 2px; }
+  .flight-endpoint .flight-place { font-size: 12px; color: rgba(59,42,33,0.55); margin-top: 2px; }
+  .flight-arrow { font-size: 18px; color: var(--teal); }
+  .flight-notes { margin-top: 10px; font-size: 12px; color: rgba(59,42,33,0.65); background: rgba(74,144,217,0.08); padding: 6px 10px; border-radius: 6px; }
+  .flight-card button.danger { position: absolute; top: 14px; right: 14px; }
+
   #itinerary-editor.ql-container.ql-snow {
     background: var(--bg-softer);
     border-color: var(--line);
@@ -383,7 +407,10 @@
     <div id="trip-sub-itinerary" class="trip-subview active">
       <div class="panel">
         <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:6px;">
-          <div id="itinerary-day-tabs" class="day-tabs" style="margin-bottom:0;"></div>
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <button type="button" id="flight-info-tab-btn" class="day-tab flight-info-tab">✈ 航班資訊</button>
+            <div id="itinerary-day-tabs" class="day-tabs" style="margin:0;"></div>
+          </div>
           <button class="ghost" id="export-word-btn">轉成 Word 檔</button>
         </div>
         <div id="itinerary-editor-wrap">
@@ -392,6 +419,43 @@
         <div class="form-actions" style="margin-top:14px;">
           <span class="status-line" id="itinerary-status">已儲存</span>
           <span class="status-line" id="export-word-status"></span>
+        </div>
+
+        <div id="flight-info-panel" style="display:none;">
+          <div class="form-grid">
+            <label class="field">方向
+              <select id="flight-direction">
+                <option value="outbound">去程</option>
+                <option value="return">回程</option>
+                <option value="other">其他</option>
+              </select>
+            </label>
+            <label class="field">日期<input type="date" id="flight-date" /></label>
+            <label class="field">航空公司<input type="text" id="flight-airline" placeholder="例如:長榮航空" /></label>
+            <label class="field">航班編號<input type="text" id="flight-no" placeholder="例如:BR116" /></label>
+          </div>
+          <div class="form-grid">
+            <label class="field">出發地名稱<input type="text" id="flight-dep-name" placeholder="例如:台北桃園機場" /></label>
+            <label class="field">出發代碼<input type="text" id="flight-dep-code" placeholder="例如:TPE" /></label>
+            <label class="field">出發時間<input type="text" id="flight-dep-time" placeholder="例如:09:20" /></label>
+          </div>
+          <div class="form-grid">
+            <label class="field">抵達地名稱<input type="text" id="flight-arr-name" placeholder="例如:札幌新千歲機場" /></label>
+            <label class="field">抵達代碼<input type="text" id="flight-arr-code" placeholder="例如:CTS" /></label>
+            <label class="field">抵達時間<input type="text" id="flight-arr-time" placeholder="例如:14:40" /></label>
+          </div>
+          <div class="form-grid">
+            <label class="field" style="grid-column: 1 / -1;">備註<input type="text" id="flight-notes" placeholder="例如:抵達後租車/JR進市區" /></label>
+          </div>
+          <div class="form-actions">
+            <button class="primary" id="flight-add-btn">新增航班</button>
+            <span class="status-line" id="flight-status"></span>
+          </div>
+
+          <div id="flight-cards-list" style="margin-top:20px;"></div>
+          <div class="empty" id="flight-empty" style="display:none;">目前還沒有航班資訊。</div>
+
+          <div id="flight-map" style="height:360px; border-radius:12px; margin-top:20px; overflow:hidden;"></div>
         </div>
       </div>
     </div>
@@ -761,6 +825,19 @@
       if (!link) return;
       e.preventDefault();
       navigateToBookmark(link.getAttribute("data-bm-day"), link.getAttribute("data-bm-id"));
+    });
+
+    // 一般網址超連結(例如插入的維基百科連結):Quill 預設點一下只會顯示編輯用的
+    // 「Visit URL / Edit / Remove」提示框,要再點一次「Visit URL」才會真的開啟。
+    // 這裡改成:直接點超連結文字本身,單擊就能開啟目的地網頁(在 mousedown 就先攔截,
+    // 避免游標先落在該處觸發 Quill 顯示提示框)。
+    quillItinerary.root.addEventListener("mousedown", (e) => {
+      const link = e.target.closest("a[href]");
+      if (!link) return;
+      const href = link.getAttribute("href") || "";
+      if (!href || href.startsWith("javascript:")) return;
+      e.preventDefault();
+      window.open(href, "_blank", "noopener");
     });
 
     quillItinerary.on("text-change", (delta, oldDelta, source) => {
@@ -1275,6 +1352,8 @@
     }
     currentItineraryDate = date;
     document.querySelectorAll(".day-tab").forEach((b) => b.classList.toggle("active", b.dataset.date === date));
+    document.getElementById("flight-info-panel").style.display = "none";
+    document.getElementById("itinerary-editor-wrap").style.display = "block";
     const content = itineraryDayContents[date] || "";
     if (content && content.includes("<")) {
       quillItinerary.root.innerHTML = content;
@@ -1283,6 +1362,143 @@
     }
     document.getElementById("itinerary-status").textContent = "已儲存";
   }
+
+  // ---------- 航班資訊 ----------
+  let currentFlights = [];
+  let flightMapInstance = null;
+  let flightMarkersLayer = null;
+
+  async function loadFlights() {
+    if (!currentTripId) return;
+    const data = await apiFetch(`/api/trips/${currentTripId}/flights`);
+    currentFlights = data.flights || [];
+    renderFlightCards();
+    renderFlightMap();
+  }
+
+  function renderFlightCards() {
+    const list = document.getElementById("flight-cards-list");
+    const emptyEl = document.getElementById("flight-empty");
+    list.innerHTML = "";
+    emptyEl.style.display = currentFlights.length === 0 ? "block" : "none";
+
+    for (const f of currentFlights) {
+      const card = document.createElement("div");
+      card.className = "flight-card";
+      const dirLabel = f.direction === "outbound" ? "去程" : f.direction === "return" ? "回程" : "其他";
+      card.innerHTML = `
+        <div class="flight-card-header">
+          <span class="flight-no">${f.airline || ""}${f.flight_no ? " " + f.flight_no : ""} · ${dirLabel}</span>
+          <span>${f.flight_date || ""}</span>
+        </div>
+        <div class="flight-card-route">
+          <div class="flight-endpoint">
+            <div class="flight-code">${f.dep_code || "—"}</div>
+            <div class="flight-time">${f.dep_time || ""}</div>
+            <div class="flight-place">${f.dep_name || ""}</div>
+          </div>
+          <div class="flight-arrow">✈</div>
+          <div class="flight-endpoint">
+            <div class="flight-code">${f.arr_code || "—"}</div>
+            <div class="flight-time">${f.arr_time || ""}</div>
+            <div class="flight-place">${f.arr_name || ""}</div>
+          </div>
+        </div>
+        ${f.notes ? `<div class="flight-notes">${f.notes}</div>` : ""}
+      `;
+      const deleteBtn = document.createElement("button");
+      deleteBtn.className = "danger";
+      deleteBtn.textContent = "刪除";
+      deleteBtn.addEventListener("click", async () => {
+        if (!confirm("確定要刪除這筆航班資訊嗎?")) return;
+        try {
+          await apiFetch(`/api/flights/${f.id}`, { method: "DELETE" });
+          loadFlights();
+        } catch (err) { alert("刪除失敗:" + err.message); }
+      });
+      card.appendChild(deleteBtn);
+      list.appendChild(card);
+    }
+  }
+
+  function renderFlightMap() {
+    const mapEl = document.getElementById("flight-map");
+    if (!mapEl || typeof L === "undefined") return;
+
+    if (!flightMapInstance) {
+      flightMapInstance = L.map(mapEl);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "&copy; OpenStreetMap contributors",
+        maxZoom: 18,
+      }).addTo(flightMapInstance);
+      flightMarkersLayer = L.layerGroup().addTo(flightMapInstance);
+    } else {
+      // 面板重新顯示時,Leaflet 需要重新計算容器尺寸,不然地圖會顯示空白或跑版
+      setTimeout(() => flightMapInstance.invalidateSize(), 50);
+    }
+    flightMarkersLayer.clearLayers();
+
+    const points = [];
+    currentFlights.forEach((f) => {
+      if (f.dep_lat != null && f.dep_lng != null) points.push({ lat: f.dep_lat, lng: f.dep_lng, label: `${f.dep_code || ""} ${f.dep_name || ""}`.trim() });
+      if (f.arr_lat != null && f.arr_lng != null) points.push({ lat: f.arr_lat, lng: f.arr_lng, label: `${f.arr_code || ""} ${f.arr_name || ""}`.trim() });
+    });
+
+    if (points.length === 0) {
+      flightMapInstance.setView([23.7, 121], 4); // 找不到座標時,先顯示台灣附近當作預設畫面
+      return;
+    }
+
+    const latlngs = points.map((p) => [p.lat, p.lng]);
+    points.forEach((p, idx) => {
+      L.marker([p.lat, p.lng]).addTo(flightMarkersLayer).bindTooltip(`${idx + 1}. ${p.label}`);
+    });
+    if (latlngs.length > 1) {
+      L.polyline(latlngs, { color: "#4a90d9", weight: 3, dashArray: "6 8" }).addTo(flightMarkersLayer);
+    }
+    flightMapInstance.fitBounds(latlngs, { padding: [30, 30] });
+  }
+
+  document.getElementById("flight-add-btn").addEventListener("click", async () => {
+    const statusEl = document.getElementById("flight-status");
+    const body = {
+      direction: document.getElementById("flight-direction").value,
+      flightDate: document.getElementById("flight-date").value,
+      airline: document.getElementById("flight-airline").value,
+      flightNo: document.getElementById("flight-no").value,
+      depName: document.getElementById("flight-dep-name").value,
+      depCode: document.getElementById("flight-dep-code").value,
+      depTime: document.getElementById("flight-dep-time").value,
+      arrName: document.getElementById("flight-arr-name").value,
+      arrCode: document.getElementById("flight-arr-code").value,
+      arrTime: document.getElementById("flight-arr-time").value,
+      notes: document.getElementById("flight-notes").value,
+    };
+    if (!body.depName || !body.arrName) { alert("請至少輸入出發地與抵達地名稱"); return; }
+    statusEl.textContent = "正在儲存並定位地點(需要幾秒鐘)...";
+    try {
+      await apiFetch(`/api/trips/${currentTripId}/flights`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      ["flight-date", "flight-airline", "flight-no", "flight-dep-name", "flight-dep-code", "flight-dep-time", "flight-arr-name", "flight-arr-code", "flight-arr-time", "flight-notes"]
+        .forEach((id) => { document.getElementById(id).value = ""; });
+      statusEl.textContent = "已新增";
+      loadFlights();
+    } catch (err) {
+      statusEl.textContent = "新增失敗:" + err.message;
+    }
+  });
+
+  function showFlightInfoPanel() {
+    document.querySelectorAll(".day-tab").forEach((b) => b.classList.remove("active"));
+    document.getElementById("flight-info-tab-btn").classList.add("active");
+    document.getElementById("itinerary-editor-wrap").style.display = "none";
+    document.getElementById("flight-info-panel").style.display = "block";
+    loadFlights();
+  }
+  document.getElementById("flight-info-tab-btn").addEventListener("click", showFlightInfoPanel);
 
   // ---------- 行程詳細 ----------
   document.getElementById("back-to-trips").addEventListener("click", () => switchView("trips"));
