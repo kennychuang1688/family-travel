@@ -905,6 +905,45 @@
     URL.revokeObjectURL(url);
   }
 
+  // 照片/影片專用:優先用系統的「分享」選單(手機上會有「儲存影像」選項,可以直接存進照片圖庫),
+  // 裝置不支援分享、或使用者的瀏覽器沒有這個功能時,自動退回一般下載(存到「檔案」App)。
+  async function shareOrDownloadMedia(m) {
+    const headers = {};
+    if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
+    const res = await fetch(`${WORKER_URL}/api/media/${m.id}/download`, { headers });
+    if (!res.ok) {
+      let message = "下載失敗";
+      try { const data = await res.json(); message = data.error || message; } catch (e) { /* 不是 JSON 就用預設訊息 */ }
+      throw new Error(message);
+    }
+    const blob = await res.blob();
+    const filename = m.name || "download";
+    const mimeType = m.mime_type || blob.type || "application/octet-stream";
+    const isImageOrVideo = mimeType.startsWith("image/") || mimeType.startsWith("video/");
+
+    if (isImageOrVideo && navigator.share && navigator.canShare) {
+      try {
+        const file = new File([blob], filename, { type: mimeType });
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file] });
+          return; // 使用者透過分享選單處理完成(例如「儲存影像」到照片圖庫)
+        }
+      } catch (err) {
+        if (err && err.name === "AbortError") return; // 使用者自己取消分享選單,不當作錯誤
+        // 其他情況(裝置不支援、逾時等)就繼續往下走,改成一般下載
+      }
+    }
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
   async function handleCredentialResponse(response) {
     idToken = response.credential;
     const errorEl = document.getElementById("auth-error");
@@ -1502,9 +1541,9 @@
       downloadLink.addEventListener("click", async () => {
         const original = downloadLink.textContent;
         downloadLink.disabled = true;
-        downloadLink.textContent = "下載中...";
+        downloadLink.textContent = "處理中...";
         try {
-          await downloadFileViaWorker(`/api/media/${m.id}/download`, m.name || "download");
+          await shareOrDownloadMedia(m);
         } catch (err) {
           alert("下載失敗:" + err.message);
         } finally {
