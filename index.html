@@ -130,9 +130,8 @@
     width: 100%; font-size: 13px; padding: 8px 10px;
   }
   .lightbox-nav-btn {
-    position: fixed;
-    top: 50%;
-    transform: translateY(-50%);
+    flex-shrink: 0;
+    align-self: center;
     z-index: 1001;
     background: rgba(255,255,255,0.9);
     border: none;
@@ -146,14 +145,11 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    margin: 0 14px;
   }
   .lightbox-nav-btn:hover { background: #fff; color: var(--gold); }
-  .lightbox-nav-prev { left: 12px; }
-  .lightbox-nav-next { right: 12px; }
   @media (max-width: 700px) {
-    .lightbox-nav-btn { width: 40px; height: 40px; font-size: 22px; }
-    .lightbox-nav-prev { left: 6px; }
-    .lightbox-nav-next { right: 6px; }
+    .lightbox-nav-btn { width: 40px; height: 40px; font-size: 22px; margin: 0 6px; }
   }
   .media-info { padding: 8px 10px; font-size: 12px; }
   .media-info input { width: 100%; margin-bottom: 6px; font-size: 12px; padding: 5px 6px; }
@@ -1674,6 +1670,40 @@
       const dayTabs = Array.from(document.querySelectorAll("#itinerary-day-tabs .day-tab"));
       let bodyHtml = `<h1>${document.getElementById("detail-title").textContent}</h1>`;
       bodyHtml += `<p>${document.getElementById("detail-sub").textContent}</p>`;
+      // 航班資訊(不管使用者有沒有點開過航班資訊分頁,都直接重新抓一次最新資料)
+      statusEl.textContent = "正在整理航班資訊...";
+      let flightsForExport = [];
+      try {
+        const fdata = await apiFetch(`/api/trips/${currentTripId}/flights`);
+        flightsForExport = fdata.flights || [];
+      } catch (err) { /* 沒有航班資訊或查詢失敗就略過,不影響其餘內容匯出 */ }
+
+      if (flightsForExport.length > 0) {
+        bodyHtml += `<h2>航班資訊</h2>`;
+        bodyHtml += `<table style="width:100%; border-collapse:collapse; margin-bottom:24px; font-size:11pt;">`;
+        bodyHtml += `<tr style="background:#f0f0f0;">
+          <th style="border:1px solid #ccc; padding:6px; text-align:left;">方向</th>
+          <th style="border:1px solid #ccc; padding:6px; text-align:left;">日期</th>
+          <th style="border:1px solid #ccc; padding:6px; text-align:left;">航空公司/班機</th>
+          <th style="border:1px solid #ccc; padding:6px; text-align:left;">出發</th>
+          <th style="border:1px solid #ccc; padding:6px; text-align:left;">抵達</th>
+        </tr>`;
+        for (const f of flightsForExport) {
+          const dirLabel = f.direction === "outbound" ? "去程" : f.direction === "return" ? "回程" : "其他";
+          const depInfo = `${f.dep_code || ""} ${f.dep_time || ""}<br/>${f.dep_name || ""}${f.dep_terminal ? " · " + f.dep_terminal : ""}`;
+          const arrInfo = `${f.arr_code || ""} ${f.arr_time || ""}<br/>${f.arr_name || ""}${f.arr_terminal ? " · " + f.arr_terminal : ""}`;
+          bodyHtml += `<tr>
+            <td style="border:1px solid #ccc; padding:6px;">${dirLabel}</td>
+            <td style="border:1px solid #ccc; padding:6px;">${f.flight_date || ""}</td>
+            <td style="border:1px solid #ccc; padding:6px;">${f.airline || ""}${f.flight_no ? " " + f.flight_no : ""}</td>
+            <td style="border:1px solid #ccc; padding:6px;">${depInfo}</td>
+            <td style="border:1px solid #ccc; padding:6px;">${arrInfo}</td>
+          </tr>`;
+        }
+        bodyHtml += `</table>`;
+      }
+
+      statusEl.textContent = "正在整理行程內容...";
       for (const tab of dayTabs) {
         const date = tab.dataset.date;
         const label = tab.textContent;
@@ -1833,10 +1863,6 @@
 
       const actions = document.createElement("div");
       actions.className = "media-actions";
-      const viewBtn = document.createElement("button");
-      viewBtn.className = "ghost";
-      viewBtn.textContent = "檢視";
-      viewBtn.addEventListener("click", () => openLightbox(sortedItems, idx));
       const downloadLink = document.createElement("button");
       downloadLink.className = "ghost";
       downloadLink.textContent = "下載";
@@ -1863,7 +1889,6 @@
           loadMedia();
         } catch (err) { alert("刪除失敗:" + err.message); }
       });
-      actions.appendChild(viewBtn);
       actions.appendChild(downloadLink);
       actions.appendChild(deleteBtn);
 
