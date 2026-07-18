@@ -299,7 +299,7 @@
   }
   #itinerary-editor .ql-editor.ql-blank::before { color: rgba(59,42,33,0.35); font-style: normal; }
   #itinerary-editor .ql-editor img { max-width: 100%; border-radius: 8px; margin: 8px 0; }
-  #itinerary-editor .ql-editor a { color: var(--gold); text-decoration: underline; }
+  #itinerary-editor .ql-editor a { color: var(--gold); text-decoration: underline; cursor: pointer; }
   #itinerary-editor .ql-editor ul,
   #itinerary-editor .ql-editor ol { padding-left: 0; }
   #itinerary-editor .ql-editor li:not(.ql-direction-rtl)::before { margin-left: 0; margin-right: 0.5em; }
@@ -413,7 +413,7 @@
       <div class="panel">
         <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:6px;">
           <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-            <button type="button" id="flight-info-tab-btn" class="day-tab flight-info-tab">✈ 航班資訊</button>
+            <button type="button" id="flight-info-tab-btn" class="day-tab flight-info-tab">✈ 航班資訊(預)</button>
             <div id="itinerary-day-tabs" class="day-tabs" style="margin:0;"></div>
           </div>
           <button class="ghost" id="export-word-btn">轉成 Word 檔</button>
@@ -1379,6 +1379,8 @@
 
   function applyFlightPanelMode() {
     document.getElementById("flight-form-area").style.display = flightPanelMode === "edit" ? "block" : "none";
+    document.getElementById("flight-info-tab-btn").textContent =
+      flightPanelMode === "edit" ? "✈ 航班資訊(編)" : "✈ 航班資訊(預)";
   }
 
   const FLIGHT_FORM_FIELDS = [
