@@ -594,6 +594,10 @@
   <div id="view-logs" class="view">
     <div class="panel">
       <h2>操作紀錄(僅管理員可見)</h2>
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
+        <button class="ghost" id="backfill-public-btn">補設定舊照片/文件為連結可看</button>
+        <span class="status-line" id="backfill-public-status"></span>
+      </div>
       <table>
         <thead><tr><th>時間</th><th>使用者</th><th>動作</th><th>細節</th></tr></thead>
         <tbody id="logs-tbody"></tbody>
@@ -647,11 +651,13 @@
     body.innerHTML = "";
     const isImage = (m.mime_type || "").startsWith("image");
 
-    if (isImage && m.thumbnail_link) {
-      // 圖片:直接用 <img> 顯示,沿用本來就穩定可用的縮圖連結,只是跟 Google 要一張大一點的尺寸,
-      // 不用像影片那樣載入整個 Google Drive 內嵌檢視器(那個很重,會拖慢手機開啟速度)
+    if (isImage && (m.drive_file_id || m.thumbnail_link)) {
+      // 圖片:直接用 <img> 顯示,不用像影片那樣載入整個 Google Drive 內嵌檢視器(那個很重,會拖慢手機開啟速度)。
+      // 優先用檔案 id 組網址,比存起來的 thumbnail_link 穩定(那個網址內建有時效性的授權,舊照片會失效)。
       const img = document.createElement("img");
-      img.src = m.thumbnail_link.replace(/=s\d+$/, "=s1600");
+      img.src = m.drive_file_id
+        ? `https://drive.google.com/thumbnail?id=${m.drive_file_id}&sz=w1600`
+        : m.thumbnail_link.replace(/=s\d+$/, "=s1600");
       img.alt = m.name || "";
       img.style.maxWidth = "100%";
       img.style.maxHeight = "70vh";
@@ -2047,9 +2053,13 @@
     thumb.className = "media-thumb";
     thumb.title = "點擊預覽";
     thumb.addEventListener("click", () => openLightbox(currentSortedMediaItems, idx));
-    if (m.thumbnail_link) {
+    // 用檔案 id 組網址,比存起來的 thumbnail_link 穩定(那個網址內建有時效性的授權,舊照片會失效)
+    const thumbUrl = m.drive_file_id
+      ? `https://drive.google.com/thumbnail?id=${m.drive_file_id}&sz=w400`
+      : m.thumbnail_link;
+    if (thumbUrl) {
       const img = document.createElement("img");
-      img.src = m.thumbnail_link;
+      img.src = thumbUrl;
       img.loading = "lazy";
       thumb.appendChild(img);
     } else {
@@ -2601,6 +2611,22 @@
       emptyEl.textContent = "無法載入紀錄:" + err.message;
     }
   }
+
+  document.getElementById("backfill-public-btn").addEventListener("click", async () => {
+    if (!confirm("確定要把所有照片、影片、文件都補設定成「知道連結就能看」嗎?這會處理全部行程裡的所有檔案,數量多時可能需要一點時間。")) return;
+    const btn = document.getElementById("backfill-public-btn");
+    const statusEl = document.getElementById("backfill-public-status");
+    btn.disabled = true;
+    statusEl.textContent = "處理中,請稍候(數量多時可能需要幾分鐘)...";
+    try {
+      const result = await apiFetch("/api/admin/backfill-public", { method: "POST" });
+      statusEl.textContent = `完成!共處理了 ${result.total} 個檔案。`;
+    } catch (err) {
+      statusEl.textContent = "處理失敗:" + err.message;
+    } finally {
+      btn.disabled = false;
+    }
+  });
 </script>
 
 </body>
