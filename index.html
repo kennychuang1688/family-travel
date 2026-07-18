@@ -279,6 +279,8 @@
   .flight-arrow { font-size: 18px; color: var(--teal); }
   .flight-notes { margin-top: 10px; font-size: 12px; color: rgba(59,42,33,0.65); background: rgba(74,144,217,0.08); padding: 6px 10px; border-radius: 6px; }
   .flight-card button.danger { position: absolute; top: 14px; right: 14px; }
+  .flight-card-actions { position: absolute; top: 14px; right: 14px; display: flex; gap: 8px; }
+  .flight-card-actions button { position: static; }
 
   #itinerary-editor.ql-container.ql-snow {
     background: var(--bg-softer);
@@ -436,19 +438,19 @@
           </div>
           <div class="form-grid">
             <label class="field">出發地名稱<input type="text" id="flight-dep-name" placeholder="例如:台北桃園機場" /></label>
+            <label class="field">航廈<input type="text" id="flight-dep-terminal" placeholder="例如:第二航廈" /></label>
             <label class="field">出發代碼<input type="text" id="flight-dep-code" placeholder="例如:TPE" /></label>
             <label class="field">出發時間<input type="text" id="flight-dep-time" placeholder="例如:09:20" /></label>
           </div>
           <div class="form-grid">
             <label class="field">抵達地名稱<input type="text" id="flight-arr-name" placeholder="例如:札幌新千歲機場" /></label>
+            <label class="field">航廈<input type="text" id="flight-arr-terminal" placeholder="例如:國內線航廈" /></label>
             <label class="field">抵達代碼<input type="text" id="flight-arr-code" placeholder="例如:CTS" /></label>
             <label class="field">抵達時間<input type="text" id="flight-arr-time" placeholder="例如:14:40" /></label>
           </div>
-          <div class="form-grid">
-            <label class="field" style="grid-column: 1 / -1;">備註<input type="text" id="flight-notes" placeholder="例如:抵達後租車/JR進市區" /></label>
-          </div>
           <div class="form-actions">
             <button class="primary" id="flight-add-btn">新增航班</button>
+            <button class="ghost" id="flight-cancel-edit-btn" style="display:none;">取消編輯</button>
             <span class="status-line" id="flight-status"></span>
           </div>
 
@@ -1367,6 +1369,13 @@
   let currentFlights = [];
   let flightMapInstance = null;
   let flightMarkersLayer = null;
+  let editingFlightId = null;
+
+  const FLIGHT_FORM_FIELDS = [
+    "flight-date", "flight-airline", "flight-no",
+    "flight-dep-name", "flight-dep-terminal", "flight-dep-code", "flight-dep-time",
+    "flight-arr-name", "flight-arr-terminal", "flight-arr-code", "flight-arr-time",
+  ];
 
   async function loadFlights() {
     if (!currentTripId) return;
@@ -1395,17 +1404,23 @@
           <div class="flight-endpoint">
             <div class="flight-code">${f.dep_code || "—"}</div>
             <div class="flight-time">${f.dep_time || ""}</div>
-            <div class="flight-place">${f.dep_name || ""}</div>
+            <div class="flight-place">${f.dep_name || ""}${f.dep_terminal ? " · " + f.dep_terminal : ""}</div>
           </div>
           <div class="flight-arrow">✈</div>
           <div class="flight-endpoint">
             <div class="flight-code">${f.arr_code || "—"}</div>
             <div class="flight-time">${f.arr_time || ""}</div>
-            <div class="flight-place">${f.arr_name || ""}</div>
+            <div class="flight-place">${f.arr_name || ""}${f.arr_terminal ? " · " + f.arr_terminal : ""}</div>
           </div>
         </div>
         ${f.notes ? `<div class="flight-notes">${f.notes}</div>` : ""}
       `;
+      const actionsWrap = document.createElement("div");
+      actionsWrap.className = "flight-card-actions";
+      const editBtn = document.createElement("button");
+      editBtn.className = "ghost";
+      editBtn.textContent = "編輯";
+      editBtn.addEventListener("click", () => startEditFlight(f));
       const deleteBtn = document.createElement("button");
       deleteBtn.className = "danger";
       deleteBtn.textContent = "刪除";
@@ -1413,10 +1428,13 @@
         if (!confirm("確定要刪除這筆航班資訊嗎?")) return;
         try {
           await apiFetch(`/api/flights/${f.id}`, { method: "DELETE" });
+          if (editingFlightId === f.id) cancelEditFlight();
           loadFlights();
         } catch (err) { alert("刪除失敗:" + err.message); }
       });
-      card.appendChild(deleteBtn);
+      actionsWrap.appendChild(editBtn);
+      actionsWrap.appendChild(deleteBtn);
+      card.appendChild(actionsWrap);
       list.appendChild(card);
     }
   }
@@ -1459,6 +1477,40 @@
     flightMapInstance.fitBounds(latlngs, { padding: [30, 30] });
   }
 
+  function clearFlightForm() {
+    FLIGHT_FORM_FIELDS.forEach((id) => { document.getElementById(id).value = ""; });
+    document.getElementById("flight-direction").value = "outbound";
+  }
+
+  function startEditFlight(f) {
+    editingFlightId = f.id;
+    document.getElementById("flight-direction").value = f.direction || "outbound";
+    document.getElementById("flight-date").value = f.flight_date || "";
+    document.getElementById("flight-airline").value = f.airline || "";
+    document.getElementById("flight-no").value = f.flight_no || "";
+    document.getElementById("flight-dep-name").value = f.dep_name || "";
+    document.getElementById("flight-dep-terminal").value = f.dep_terminal || "";
+    document.getElementById("flight-dep-code").value = f.dep_code || "";
+    document.getElementById("flight-dep-time").value = f.dep_time || "";
+    document.getElementById("flight-arr-name").value = f.arr_name || "";
+    document.getElementById("flight-arr-terminal").value = f.arr_terminal || "";
+    document.getElementById("flight-arr-code").value = f.arr_code || "";
+    document.getElementById("flight-arr-time").value = f.arr_time || "";
+    document.getElementById("flight-add-btn").textContent = "更新航班";
+    document.getElementById("flight-cancel-edit-btn").style.display = "inline-block";
+    document.getElementById("flight-status").textContent = "編輯中...";
+    document.getElementById("flight-dep-name").scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  function cancelEditFlight() {
+    editingFlightId = null;
+    clearFlightForm();
+    document.getElementById("flight-add-btn").textContent = "新增航班";
+    document.getElementById("flight-cancel-edit-btn").style.display = "none";
+    document.getElementById("flight-status").textContent = "";
+  }
+  document.getElementById("flight-cancel-edit-btn").addEventListener("click", cancelEditFlight);
+
   document.getElementById("flight-add-btn").addEventListener("click", async () => {
     const statusEl = document.getElementById("flight-status");
     const body = {
@@ -1467,27 +1519,37 @@
       airline: document.getElementById("flight-airline").value,
       flightNo: document.getElementById("flight-no").value,
       depName: document.getElementById("flight-dep-name").value,
+      depTerminal: document.getElementById("flight-dep-terminal").value,
       depCode: document.getElementById("flight-dep-code").value,
       depTime: document.getElementById("flight-dep-time").value,
       arrName: document.getElementById("flight-arr-name").value,
+      arrTerminal: document.getElementById("flight-arr-terminal").value,
       arrCode: document.getElementById("flight-arr-code").value,
       arrTime: document.getElementById("flight-arr-time").value,
-      notes: document.getElementById("flight-notes").value,
     };
     if (!body.depName || !body.arrName) { alert("請至少輸入出發地與抵達地名稱"); return; }
-    statusEl.textContent = "正在儲存並定位地點(需要幾秒鐘)...";
+    statusEl.textContent = editingFlightId ? "正在更新..." : "正在儲存並定位地點(需要幾秒鐘)...";
     try {
-      await apiFetch(`/api/trips/${currentTripId}/flights`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      ["flight-date", "flight-airline", "flight-no", "flight-dep-name", "flight-dep-code", "flight-dep-time", "flight-arr-name", "flight-arr-code", "flight-arr-time", "flight-notes"]
-        .forEach((id) => { document.getElementById(id).value = ""; });
-      statusEl.textContent = "已新增";
+      if (editingFlightId) {
+        await apiFetch(`/api/flights/${editingFlightId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        statusEl.textContent = "已更新";
+        cancelEditFlight();
+      } else {
+        await apiFetch(`/api/trips/${currentTripId}/flights`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        clearFlightForm();
+        statusEl.textContent = "已新增";
+      }
       loadFlights();
     } catch (err) {
-      statusEl.textContent = "新增失敗:" + err.message;
+      statusEl.textContent = (editingFlightId ? "更新失敗:" : "新增失敗:") + err.message;
     }
   });
 
