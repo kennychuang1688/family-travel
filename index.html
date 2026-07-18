@@ -170,6 +170,11 @@
   #itinerary-toolbar button.ql-active .ql-fill { fill: var(--gold); }
   #itinerary-toolbar .ql-picker-label.ql-active,
   #itinerary-toolbar .ql-picker-item.ql-selected { color: var(--gold); }
+  /* 清單已在最外層時,「減少縮排」會套用這個 class,讓整排(符號+文字)再往左靠 */
+  .ql-editor li.ql-list-flush-1 { padding-left: 0.9em; }
+  .ql-editor li.ql-list-flush-1::before { margin-left: -0.9em; width: 0.85em; }
+  .ql-editor ul:has(> li.ql-list-flush-1),
+  .ql-editor ol:has(> li.ql-list-flush-1) { padding-left: 0; }
   #bookmark-btn, #bm-link-btn {
     background: transparent; border: 1px solid var(--line); cursor: pointer; color: var(--paper);
     font-size: 12px; padding: 4px 10px; border-radius: 6px; white-space: nowrap;
@@ -532,6 +537,16 @@
 
     Quill.register(BmMarkBlot, true);
     Quill.register(BmLinkBlot, true);
+
+    // 自訂格式:清單已經在最外層(indent=0)時,「減少縮排」可以再往左移一階,
+    // 讓項目符號/數字/勾選框整排一起靠更左,但不會取消清單格式本身
+    const Parchment = Quill.import("parchment");
+    class ListFlushAttributor extends Parchment.Attributor.Class {}
+    const ListFlush = new ListFlushAttributor("listFlush", "ql-list-flush", {
+      scope: Parchment.Scope.BLOCK,
+      whitelist: ["1"],
+    });
+    Quill.register(ListFlush, true);
   })();
 
   function initQuillItinerary() {
@@ -560,6 +575,9 @@
 
     // 修正 Quill 內建限制:清單項目在最外層(縮排 0)時,預設「減少縮排」按鈕會沒有反應。
     // 這裡改寫成:已經在最外層時,「減少縮排」直接把清單格式整個取消,變回一般段落。
+    // 清單項目在最外層(indent=0)時,「減少縮排」不會取消清單,
+    // 而是再套用一階「listFlush」讓整排(項目符號+文字)一起往左移;
+    // 「增加縮排」時如果目前是 flush 狀態,先取消 flush 再回到一般縮排邏輯。
     quillItinerary.getModule("toolbar").addHandler("indent", function (value) {
       const range = this.quill.getSelection();
       if (!range) return;
@@ -568,13 +586,20 @@
         const lineIndex = this.quill.getIndex(line);
         const format = this.quill.getFormat(lineIndex, 1);
         const currentIndent = parseInt(format.indent || 0, 10);
+
         if (value === "-1" && currentIndent <= 0 && format.list) {
-          this.quill.formatLine(lineIndex, 1, { list: false, indent: false }, "user");
-        } else {
-          const modifier = value === "+1" ? 1 : -1;
-          const nextIndent = Math.max(0, currentIndent + modifier);
-          this.quill.formatLine(lineIndex, 1, "indent", nextIndent === 0 ? false : nextIndent, "user");
+          if (!format.listFlush) {
+            this.quill.formatLine(lineIndex, 1, "listFlush", "1", "user");
+          }
+          return;
         }
+        if (value === "+1" && format.listFlush) {
+          this.quill.formatLine(lineIndex, 1, "listFlush", false, "user");
+          return;
+        }
+        const modifier = value === "+1" ? 1 : -1;
+        const nextIndent = Math.max(0, currentIndent + modifier);
+        this.quill.formatLine(lineIndex, 1, "indent", nextIndent === 0 ? false : nextIndent, "user");
       });
     });
 
