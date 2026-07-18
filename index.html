@@ -146,7 +146,8 @@
   .lightbox-content iframe, .lightbox-content img, .lightbox-content video {
     max-width: 82vw; max-height: 76vh; width: 640px; height: 480px; border: none; border-radius: 8px; background: #000;
   }
-  #lightbox-close { align-self: flex-end; }
+  .lightbox-top-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .lightbox-top-actions { display: flex; gap: 8px; }
   .lightbox-caption-wrap { padding: 0 4px; }
   .lightbox-caption-wrap input {
     width: 100%; font-size: 13px; padding: 8px 10px;
@@ -610,7 +611,13 @@
 <div id="lightbox-overlay" class="lightbox-overlay" style="display:none;">
   <button id="lightbox-prev" class="lightbox-nav-btn lightbox-nav-prev" aria-label="上一張" title="上一張">‹</button>
   <div class="lightbox-content">
-    <button id="lightbox-close" class="ghost">✕ 關閉</button>
+    <div class="lightbox-top-bar">
+      <div class="lightbox-top-actions">
+        <button id="lightbox-download-btn" class="ghost">下載</button>
+        <button id="lightbox-delete-btn" class="ghost">刪除</button>
+      </div>
+      <button id="lightbox-close" class="ghost">✕ 關閉</button>
+    </div>
     <div id="lightbox-body"></div>
     <div id="lightbox-caption-wrap" class="lightbox-caption-wrap">
       <input type="text" id="lightbox-caption-input" placeholder="加上說明文字..." />
@@ -706,6 +713,31 @@
       } catch (err) {
         alert("更新說明失敗:" + err.message);
       }
+    };
+
+    // 下載/刪除:對應目前顯示的這一筆
+    const downloadBtn = document.getElementById("lightbox-download-btn");
+    const deleteBtn = document.getElementById("lightbox-delete-btn");
+    downloadBtn.onclick = async () => {
+      const original = downloadBtn.textContent;
+      downloadBtn.disabled = true;
+      downloadBtn.textContent = "處理中...";
+      try {
+        await shareOrDownloadMedia(m);
+      } catch (err) {
+        alert("下載失敗:" + err.message);
+      } finally {
+        downloadBtn.disabled = false;
+        downloadBtn.textContent = original;
+      }
+    };
+    deleteBtn.onclick = async () => {
+      if (!confirm(`確定要刪除「${m.name}」嗎?這會同時刪除 Google Drive 上的檔案。`)) return;
+      try {
+        await apiFetch(`/api/media/${m.id}`, { method: "DELETE" });
+        closeLightbox();
+        loadMedia();
+      } catch (err) { alert("刪除失敗:" + err.message); }
     };
 
     // 只有一張時,隱藏上一張/下一張按鈕
@@ -2088,40 +2120,8 @@
       } catch (err) { alert("更新說明失敗:" + err.message); }
     });
 
-    const actions = document.createElement("div");
-    actions.className = "media-actions";
-    const downloadLink = document.createElement("button");
-    downloadLink.className = "ghost";
-    downloadLink.textContent = "下載";
-    downloadLink.addEventListener("click", async () => {
-      const original = downloadLink.textContent;
-      downloadLink.disabled = true;
-      downloadLink.textContent = "處理中...";
-      try {
-        await shareOrDownloadMedia(m);
-      } catch (err) {
-        alert("下載失敗:" + err.message);
-      } finally {
-        downloadLink.disabled = false;
-        downloadLink.textContent = original;
-      }
-    });
-    const deleteBtn = document.createElement("button");
-    deleteBtn.className = "ghost";
-    deleteBtn.textContent = "刪除";
-    deleteBtn.addEventListener("click", async () => {
-      if (!confirm(`確定要刪除「${m.name}」嗎?這會同時刪除 Google Drive 上的檔案。`)) return;
-      try {
-        await apiFetch(`/api/media/${m.id}`, { method: "DELETE" });
-        loadMedia();
-      } catch (err) { alert("刪除失敗:" + err.message); }
-    });
-    actions.appendChild(downloadLink);
-    actions.appendChild(deleteBtn);
-
     info.appendChild(nameLabel);
     info.appendChild(captionInput);
-    info.appendChild(actions);
     card.appendChild(thumb);
     card.appendChild(info);
     return card;
