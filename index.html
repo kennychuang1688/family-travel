@@ -645,7 +645,29 @@
     if (!m) return;
     const body = document.getElementById("lightbox-body");
     body.innerHTML = "";
-    if (m.drive_file_id) {
+    const isImage = (m.mime_type || "").startsWith("image");
+
+    if (isImage && m.thumbnail_link) {
+      // 圖片:直接用 <img> 顯示,沿用本來就穩定可用的縮圖連結,只是跟 Google 要一張大一點的尺寸,
+      // 不用像影片那樣載入整個 Google Drive 內嵌檢視器(那個很重,會拖慢手機開啟速度)
+      const img = document.createElement("img");
+      img.src = m.thumbnail_link.replace(/=s\d+$/, "=s1600");
+      img.alt = m.name || "";
+      img.style.maxWidth = "100%";
+      img.style.maxHeight = "70vh";
+      img.style.objectFit = "contain";
+      img.onerror = () => {
+        // 萬一放大尺寸的連結失敗,退回原本的 Google 內嵌檢視器,確保至少看得到
+        body.innerHTML = "";
+        if (m.drive_file_id) {
+          const iframe = document.createElement("iframe");
+          iframe.src = `https://drive.google.com/file/d/${m.drive_file_id}/preview`;
+          iframe.allow = "autoplay";
+          body.appendChild(iframe);
+        }
+      };
+      body.appendChild(img);
+    } else if (m.drive_file_id) {
       const iframe = document.createElement("iframe");
       iframe.src = `https://drive.google.com/file/d/${m.drive_file_id}/preview`;
       iframe.allow = "autoplay";
