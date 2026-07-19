@@ -550,6 +550,13 @@
             </select>
           </label>
           <label class="field">說明<input type="text" id="expense-desc" placeholder="說明" /></label>
+          <label class="field">費用狀態
+            <select id="expense-payment-status">
+              <option value="已付款">已付款</option>
+              <option value="已付訂金">已付訂金</option>
+              <option value="尚未付款" selected>尚未付款</option>
+            </select>
+          </label>
           <label class="field">金額<input type="number" id="expense-amount" placeholder="0" /></label>
           <label class="field">幣別
             <select id="expense-currency">
@@ -562,7 +569,7 @@
         <button class="primary" id="add-expense-btn">新增費用</button>
         <button class="ghost" id="expense-cancel-edit-btn" style="display:none;">取消編輯</button>
         <table style="margin-top:16px;">
-          <thead><tr><th>消費日期</th><th>類別</th><th>說明</th><th>金額</th><th>約合台幣</th><th style="text-align:right;"></th></tr></thead>
+          <thead><tr><th>消費日期</th><th>類別</th><th>說明</th><th>金額</th><th>約合台幣</th><th>費用狀態</th><th style="text-align:right;"></th></tr></thead>
           <tbody id="expenses-tbody"></tbody>
         </table>
         <div class="expenses-bottom-row">
@@ -2530,7 +2537,7 @@
       }
 
       const tr = document.createElement("tr");
-      tr.innerHTML = `<td>${e.date || ""}</td><td>${e.category || ""}</td><td>${e.description || ""}</td><td>${e.amount} ${e.currency}</td><td>${twdText}</td><td style="text-align:right; white-space:nowrap;"></td>`;
+      tr.innerHTML = `<td>${e.date || ""}</td><td>${e.category || ""}</td><td>${e.description || ""}</td><td>${e.amount} ${e.currency}</td><td>${twdText}</td><td>${e.payment_status || "尚未付款"}</td><td style="text-align:right; white-space:nowrap;"></td>`;
       const editBtn = document.createElement("button");
       editBtn.className = "ghost";
       editBtn.textContent = "編輯";
@@ -2564,6 +2571,7 @@
     document.getElementById("expense-date").value = e.date || "";
     document.getElementById("expense-category").value = e.category || "交通";
     document.getElementById("expense-desc").value = e.description || "";
+    document.getElementById("expense-payment-status").value = e.payment_status || "尚未付款";
     document.getElementById("expense-amount").value = e.amount;
     document.getElementById("expense-currency").value = e.currency || "TWD";
     document.getElementById("add-expense-btn").textContent = "更新費用";
@@ -2576,6 +2584,7 @@
     ["expense-date","expense-desc","expense-amount"].forEach(id => document.getElementById(id).value = "");
     document.getElementById("expense-category").selectedIndex = 0;
     document.getElementById("expense-currency").selectedIndex = 0;
+    document.getElementById("expense-payment-status").value = "尚未付款";
     document.getElementById("add-expense-btn").textContent = "新增費用";
     document.getElementById("expense-cancel-edit-btn").style.display = "none";
   }
@@ -2585,6 +2594,7 @@
     const date = document.getElementById("expense-date").value;
     const category = document.getElementById("expense-category").value;
     const description = document.getElementById("expense-desc").value;
+    const paymentStatus = document.getElementById("expense-payment-status").value;
     const amount = parseFloat(document.getElementById("expense-amount").value);
     const currency = document.getElementById("expense-currency").value;
     if (isNaN(amount)) { alert("請輸入金額"); return; }
@@ -2592,17 +2602,18 @@
       await apiFetch(`/api/expenses/${editingExpenseId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date, category, description, amount, currency }),
+        body: JSON.stringify({ date, category, description, amount, currency, paymentStatus }),
       });
       cancelEditExpense();
     } else {
       await apiFetch(`/api/trips/${currentTripId}/expenses`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date, category, description, amount, currency }),
+        body: JSON.stringify({ date, category, description, amount, currency, paymentStatus }),
       });
       ["expense-date","expense-desc","expense-amount"].forEach(id => document.getElementById(id).value = "");
       document.getElementById("expense-category").selectedIndex = 0;
+      document.getElementById("expense-payment-status").value = "尚未付款";
     }
     loadExpenses();
   });
