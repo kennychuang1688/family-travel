@@ -659,29 +659,38 @@
     const m = lightboxItems[lightboxIndex];
     if (!m) return;
     const body = document.getElementById("lightbox-body");
+    body.querySelectorAll("img[data-object-url]").forEach((img) => URL.revokeObjectURL(img.dataset.objectUrl));
     body.innerHTML = "";
 
     const isImage = (m.mime_type || "").startsWith("image");
 
-    if (isImage && (m.drive_file_id || m.thumbnail_link)) {
+    if (isImage && m.drive_file_id) {
       // 圖片:直接用 <img> 顯示,不用像影片那樣載入整個 Google Drive 內嵌檢視器(那個很重,會拖慢手機開啟速度)。
-      // 優先用檔案 id 組網址,比存起來的 thumbnail_link 穩定(那個網址內建有時效性的授權,舊照片會失效)。
+      // 改成打自己的 Worker API(帶 Authorization header),不再直接連 drive.google.com,
+      // 這樣不會受使用者瀏覽器對 Google 帳號登入狀態不穩定的影響。
       const img = document.createElement("img");
-      img.src = m.drive_file_id
-        ? `https://drive.google.com/thumbnail?id=${m.drive_file_id}&sz=w1600`
-        : m.thumbnail_link.replace(/=s\d+$/, "=s1600");
       img.alt = m.name || "";
-      img.onerror = () => {
-        // 萬一放大尺寸的連結失敗,退回原本的 Google 內嵌檢視器,確保至少看得到
-        body.innerHTML = "";
-        if (m.drive_file_id) {
+      body.appendChild(img);
+
+      (async () => {
+        try {
+          const headers = {};
+          if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
+          const res = await fetch(`${WORKER_URL}/api/media/${m.id}/thumbnail?size=1600`, { headers });
+          if (!res.ok) throw new Error("圖片載入失敗");
+          const blob = await res.blob();
+          const objectUrl = URL.createObjectURL(blob);
+          img.dataset.objectUrl = objectUrl;
+          img.src = objectUrl;
+        } catch (e) {
+          // 萬一失敗,退回原本的 Google 內嵌檢視器,確保至少看得到
+          body.innerHTML = "";
           const iframe = document.createElement("iframe");
           iframe.src = `https://drive.google.com/file/d/${m.drive_file_id}/preview`;
           iframe.allow = "autoplay";
           body.appendChild(iframe);
         }
-      };
-      body.appendChild(img);
+      })();
     } else if (m.drive_file_id) {
       const iframe = document.createElement("iframe");
       iframe.src = `https://drive.google.com/file/d/${m.drive_file_id}/preview`;
@@ -762,7 +771,9 @@
 
   function closeLightbox() {
     document.getElementById("lightbox-overlay").style.display = "none";
-    document.getElementById("lightbox-body").innerHTML = "";
+    const body = document.getElementById("lightbox-body");
+    body.querySelectorAll("img[data-object-url]").forEach((img) => URL.revokeObjectURL(img.dataset.objectUrl));
+    body.innerHTML = "";
     document.getElementById("lightbox-caption-input").onchange = null;
     lightboxItems = [];
   }
@@ -2073,14 +2084,17 @@
   let activeImageLoads = 0;
   const imageLoadQueue = [];
 
-  function queueImageLoad(img, src) {
-    imageLoadQueue.push({ img, src });
+  // path 是打我們自己 Worker 的 API 路徑(例如 /api/media/xxx/thumbnail?size=300),
+  // 而不是直接連 drive.google.com 的網址——這樣才能帶 Authorization header,
+  // 不需要依賴使用者瀏覽器對 Google 帳號當下的登入狀態,避免縮圖時好時壞的問題。
+  function queueImageLoad(img, path) {
+    imageLoadQueue.push({ img, path });
     processImageLoadQueue();
   }
 
   function processImageLoadQueue() {
     while (activeImageLoads < IMAGE_LOAD_CONCURRENCY && imageLoadQueue.length > 0) {
-      const { img, src } = imageLoadQueue.shift();
+      const { img, path } = imageLoadQueue.shift();
       activeImageLoads++;
       let settled = false;
       const done = () => {
@@ -2093,10 +2107,31 @@
       // 逾時保護:萬一某張圖片(尤其是幫影片產生縮圖)卡住太久都沒回應,
       // 8 秒後強制放棄這個名額,讓佇列繼續往下處理,不會整個卡死
       const timeoutId = setTimeout(done, 8000);
-      img.addEventListener("load", done, { once: true });
-      img.addEventListener("error", done, { once: true });
-      img.src = src;
+
+      (async () => {
+        try {
+          const headers = {};
+          if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
+          const res = await fetch(`${WORKER_URL}${path}`, { headers });
+          if (!res.ok) throw new Error("縮圖載入失敗");
+          const blob = await res.blob();
+          const objectUrl = URL.createObjectURL(blob);
+          img.dataset.objectUrl = objectUrl; // 之後畫面重繪時可以拿來釋放記憶體
+          img.src = objectUrl;
+        } catch (e) {
+          // 失敗就維持空白,外層 .media-thumb 的底色會顯示出來,不至於顯示壞掉的圖示
+        } finally {
+          done();
+        }
+      })();
     }
+  }
+
+  // 畫面重繪(切換行程、重新整理清單)前,先釋放之前建立的 blob URL,避免記憶體一直累積。
+  function revokeGalleryObjectUrls() {
+    document.querySelectorAll("#gallery img[data-object-url]").forEach((img) => {
+      URL.revokeObjectURL(img.dataset.objectUrl);
+    });
   }
 
   function createMediaCard(m, idx) {
@@ -2123,14 +2158,16 @@
     const isVideo = (m.mime_type || "").startsWith("video");
     // 影片一律不跟 Drive 要縮圖,直接顯示靜態圖示就好——大型影片檔案(例如上百 MB),
     // Google 產生縮圖的行為可能不穩定或耗時很久,容易拖垮整個縮圖載入佇列。
-    const thumbUrl = isVideo
+    // 縮圖改成打自己的 Worker API(由後端代為向 Drive 拿圖),不再直接連
+    // drive.google.com,避免使用者瀏覽器對 Google 帳號的登入狀態不穩定造成縮圖時好時壞。
+    const thumbPath = isVideo
       ? null
-      : (m.drive_file_id ? `https://drive.google.com/thumbnail?id=${m.drive_file_id}&sz=w300` : m.thumbnail_link);
-    if (thumbUrl) {
+      : (m.drive_file_id ? `/api/media/${m.id}/thumbnail?size=300` : null);
+    if (thumbPath) {
       const img = document.createElement("img");
       img.loading = "lazy";
       thumb.appendChild(img);
-      queueImageLoad(img, thumbUrl);
+      queueImageLoad(img, thumbPath);
     } else {
       thumb.textContent = isVideo ? "▶ 影片" : "檔案";
     }
@@ -2205,6 +2242,7 @@
   function renderGallery(items) {
     const gallery = document.getElementById("gallery");
     const emptyEl = document.getElementById("media-empty");
+    revokeGalleryObjectUrls();
     gallery.innerHTML = "";
     emptyEl.style.display = items.length === 0 ? "block" : "none";
 
