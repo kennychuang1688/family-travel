@@ -544,9 +544,6 @@
             <select id="expense-currency">
               <option value="TWD">TWD</option>
               <option value="JPY">JPY</option>
-              <option value="USD">USD</option>
-              <option value="EUR">EUR</option>
-              <option value="KRW">KRW</option>
             </select>
           </label>
         </div>
@@ -2393,7 +2390,7 @@
 
   // ---- 費用 / 匯率 ----
   // 幣別是否需要另外設定匯率(TWD 本身固定是 1,不需要設定)
-  const EXCHANGE_RATE_CURRENCIES = ["JPY", "USD", "EUR", "KRW"];
+  const EXCHANGE_RATE_CURRENCIES = ["JPY"];
   let exchangeRates = {}; // { JPY: 0.22, USD: 32.5, ... } 對台幣的匯率,尚未設定的幣別不會有這個 key
 
   async function loadExchangeRates() {
