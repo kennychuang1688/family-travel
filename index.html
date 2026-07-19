@@ -537,7 +537,15 @@
         <h2>費用花費</h2>
         <div class="form-grid">
           <label class="field">日期<input type="date" id="expense-date" /></label>
-          <label class="field">類別<input type="text" id="expense-category" placeholder="交通/住宿/餐飲..." /></label>
+          <label class="field">類別
+            <select id="expense-category">
+              <option value="交通">交通</option>
+              <option value="住宿">住宿</option>
+              <option value="餐飲">餐飲</option>
+              <option value="門票">門票</option>
+              <option value="其他">其他</option>
+            </select>
+          </label>
           <label class="field">說明<input type="text" id="expense-desc" placeholder="說明" /></label>
           <label class="field">金額<input type="number" id="expense-amount" placeholder="0" /></label>
           <label class="field">幣別
@@ -2503,7 +2511,8 @@
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ date, category, description, amount, currency }),
     });
-    ["expense-date","expense-category","expense-desc","expense-amount"].forEach(id => document.getElementById(id).value = "");
+    ["expense-date","expense-desc","expense-amount"].forEach(id => document.getElementById(id).value = "");
+    document.getElementById("expense-category").selectedIndex = 0;
     loadExpenses();
   });
 
