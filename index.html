@@ -2848,7 +2848,27 @@
         options: {
           responsive: true,
           plugins: {
-            legend: { position: "bottom", labels: { color: "#3b2a21", font: { size: 12 } } },
+            legend: {
+              position: "bottom",
+              labels: {
+                color: "#3b2a21",
+                font: { size: 12 },
+                generateLabels: (chart) => {
+                  const ds = chart.data.datasets[0];
+                  const sum = ds.data.reduce((a, b) => a + b, 0);
+                  return chart.data.labels.map((label, i) => {
+                    const value = ds.data[i];
+                    const pct = sum > 0 ? ((value / sum) * 100).toFixed(1) : "0.0";
+                    return {
+                      text: `${label} ${pct}%`,
+                      fillStyle: ds.backgroundColor[i],
+                      strokeStyle: ds.backgroundColor[i],
+                      index: i,
+                    };
+                  });
+                },
+              },
+            },
             tooltip: {
               callbacks: {
                 label: (ctx) => {
