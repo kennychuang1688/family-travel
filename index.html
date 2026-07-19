@@ -11,6 +11,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
 <style>
   /* 自訂字型:芫荽體(字型檔放在網站根目錄下的 fonts 資料夾) */
   @font-face {
@@ -2793,6 +2794,7 @@
 
   // ---- 費用分析(圓形圖) ----
   let expenseCategoryChart = null;
+  let datalabelsRegistered = false;
   const EXPENSE_CHART_COLORS = ["#e3a23d", "#4a90d9", "#c0483b", "#7c9c6b", "#9b7fc7", "#d9985a", "#5aa3a3"];
 
   function renderExpenseAnalysisChart(items) {
@@ -2833,6 +2835,10 @@
 
     try {
       if (expenseCategoryChart) expenseCategoryChart.destroy();
+      if (typeof ChartDataLabels !== "undefined" && !datalabelsRegistered) {
+        Chart.register(ChartDataLabels);
+        datalabelsRegistered = true;
+      }
       expenseCategoryChart = new Chart(canvas.getContext("2d"), {
         type: "pie",
         data: {
@@ -2850,6 +2856,14 @@
                   const pct = total > 0 ? ((value / total) * 100).toFixed(1) : "0.0";
                   return `${ctx.label}:${Math.round(value).toLocaleString()} 元 (${pct}%)`;
                 },
+              },
+            },
+            datalabels: {
+              color: "#fff",
+              font: { weight: "bold", size: 13 },
+              formatter: (value) => {
+                const pct = total > 0 ? ((value / total) * 100).toFixed(1) : "0.0";
+                return `${pct}%`;
               },
             },
           },
