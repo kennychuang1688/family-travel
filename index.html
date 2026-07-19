@@ -454,7 +454,7 @@
         <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:6px;">
           <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
             <button type="button" id="flight-info-tab-btn" class="day-tab flight-info-tab">✈ 航班資訊</button>
-            <button type="button" id="accommodation-info-tab-btn" class="day-tab flight-info-tab">������ 住宿資訊</button>
+            <button type="button" id="accommodation-info-tab-btn" class="day-tab flight-info-tab">⌂ 住宿資訊</button>
             <div id="itinerary-day-tabs" class="day-tabs" style="margin:0;"></div>
           </div>
           <button class="ghost" id="export-word-btn">轉成 Word 檔</button>
@@ -583,7 +583,7 @@
               <option value="交通">交通</option>
               <option value="住宿">住宿</option>
               <option value="餐飲">餐飲</option>
-              <option value="門票">門票</option>
+              <option value="票卷">票卷</option>
               <option value="其他">其他</option>
             </select>
           </label>
@@ -1661,7 +1661,7 @@
       document.querySelectorAll(".day-tab").forEach((b) => b.classList.toggle("active", b.dataset.date === date));
       document.getElementById("flight-info-tab-btn").textContent = "✈ 航班資訊"; // 離開航班分頁,重置文字(移除預覽/編輯後綴)
       document.getElementById("flight-info-panel").style.display = "none";
-      document.getElementById("accommodation-info-tab-btn").textContent = "������ 住宿資訊"; // 離開住宿分頁,重置文字(移除預覽/編輯後綴)
+      document.getElementById("accommodation-info-tab-btn").textContent = "⌂ 住宿資訊"; // 離開住宿分頁,重置文字(移除預覽/編輯後綴)
       document.getElementById("accommodation-info-panel").style.display = "none";
       document.getElementById("itinerary-editor-wrap").style.display = "block";
       const content = itineraryDayContents[date] || "";
@@ -1892,7 +1892,7 @@
     document.querySelectorAll("#itinerary-day-tabs .day-tab").forEach((b) => {
       b.textContent = b.dataset.baseLabel || b.textContent;
     });
-    document.getElementById("accommodation-info-tab-btn").textContent = "������ 住宿資訊"; // 離開住宿分頁,重置文字
+    document.getElementById("accommodation-info-tab-btn").textContent = "⌂ 住宿資訊"; // 離開住宿分頁,重置文字
     document.getElementById("accommodation-info-panel").style.display = "none";
     document.getElementById("flight-info-tab-btn").classList.add("active");
     document.getElementById("itinerary-editor-wrap").style.display = "none";
@@ -1919,7 +1919,7 @@
   function applyAccommodationPanelMode() {
     document.getElementById("accommodation-form-area").style.display = accommodationPanelMode === "edit" ? "block" : "none";
     document.getElementById("accommodation-info-tab-btn").textContent =
-      accommodationPanelMode === "edit" ? "������ 住宿資訊(編)" : "������ 住宿資訊(預)";
+      accommodationPanelMode === "edit" ? "⌂ 住宿資訊(編)" : "⌂ 住宿資訊(預)";
   }
 
   const ACCOMMODATION_FORM_FIELDS = [
