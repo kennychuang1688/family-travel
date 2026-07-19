@@ -638,6 +638,7 @@
             <option value="機票">機票</option>
             <option value="飯店">飯店</option>
             <option value="保險">保險</option>
+            <option value="護照">護照</option>
             <option value="其他">其他</option>
           </select>
           <input type="file" id="doc-file-input" multiple />
@@ -2772,8 +2773,7 @@
       tbody.appendChild(tr);
     }
 
-    let totalHtml = Object.entries(totals).map(([cur, amt]) => `<div class="total-line">小計(${cur}):${amt}</div>`).join("");
-    totalHtml += `<div class="total-line" style="font-weight:600; margin-top:6px;">總計(約合台幣 TWD):${Math.round(twdTotal).toLocaleString()} 元</div>`;
+    let totalHtml = `<div class="total-line" style="font-weight:600; margin-top:6px;">總計(約合台幣 TWD):${Math.round(twdTotal).toLocaleString()} 元</div>`;
     if (missingRateCount > 0) {
       totalHtml += `<div class="total-line" style="color:#b45309;">有 ${missingRateCount} 筆費用的幣別尚未設定匯率,未計入台幣總計,請在上方「匯率設定」補上對應匯率。</div>`;
     }
