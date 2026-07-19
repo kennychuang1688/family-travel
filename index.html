@@ -322,6 +322,8 @@
     .flight-card { padding-right: 16px; }
     .flight-card-actions { position: static; margin-top: 10px; justify-content: flex-end; }
   }
+  .accommodation-card-body { font-size: 13px; line-height: 1.9; }
+  .accommodation-card-body .arow-label { color: rgba(59,42,33,0.55); margin-right: 6px; }
 
   #itinerary-editor.ql-container.ql-snow {
     background: var(--bg-softer);
@@ -452,6 +454,7 @@
         <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:6px;">
           <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
             <button type="button" id="flight-info-tab-btn" class="day-tab flight-info-tab">✈ 航班資訊</button>
+            <button type="button" id="accommodation-info-tab-btn" class="day-tab flight-info-tab">������ 住宿資訊</button>
             <div id="itinerary-day-tabs" class="day-tabs" style="margin:0;"></div>
           </div>
           <button class="ghost" id="export-word-btn">轉成 Word 檔</button>
@@ -501,6 +504,41 @@
           <div class="empty" id="flight-empty" style="display:none;">目前還沒有航班資訊。</div>
 
           <div id="flight-map" style="height:360px; border-radius:12px; margin-top:20px; overflow:hidden;"></div>
+        </div>
+
+        <div id="accommodation-info-panel" style="display:none;">
+          <div id="accommodation-form-area">
+            <div class="form-grid">
+              <label class="field">住宿名稱<input type="text" id="accommodation-name" placeholder="例如:大阪心齋橋飯店" /></label>
+              <label class="field">地址<input type="text" id="accommodation-address" placeholder="例如:大阪府大阪市..." /></label>
+              <label class="field">訂單編號<input type="text" id="accommodation-confirmation-no" placeholder="例如:ABC12345" /></label>
+            </div>
+            <div class="form-grid">
+              <label class="field">入住日期<input type="date" id="accommodation-checkin-date" /></label>
+              <label class="field">入住時間<input type="text" id="accommodation-checkin-time" placeholder="例如:15:00" /></label>
+              <label class="field">退房日期<input type="date" id="accommodation-checkout-date" /></label>
+              <label class="field">退房時間<input type="text" id="accommodation-checkout-time" placeholder="例如:11:00" /></label>
+            </div>
+            <div class="form-grid">
+              <label class="field">金額<input type="number" id="accommodation-price" placeholder="0" /></label>
+              <label class="field">幣別
+                <select id="accommodation-currency">
+                  <option value="TWD">TWD</option>
+                  <option value="JPY">JPY</option>
+                  <option value="USD">USD</option>
+                </select>
+              </label>
+              <label class="field">備註<input type="text" id="accommodation-notes" placeholder="備註" /></label>
+            </div>
+            <div class="form-actions">
+              <button class="primary" id="accommodation-add-btn">新增住宿</button>
+              <button class="ghost" id="accommodation-cancel-edit-btn" style="display:none;">取消編輯</button>
+              <span class="status-line" id="accommodation-status"></span>
+            </div>
+          </div>
+
+          <div id="accommodation-cards-list" style="margin-top:20px;"></div>
+          <div class="empty" id="accommodation-empty" style="display:none;">目前還沒有住宿資訊。</div>
         </div>
       </div>
     </div>
@@ -1623,6 +1661,8 @@
       document.querySelectorAll(".day-tab").forEach((b) => b.classList.toggle("active", b.dataset.date === date));
       document.getElementById("flight-info-tab-btn").textContent = "✈ 航班資訊"; // 離開航班分頁,重置文字(移除預覽/編輯後綴)
       document.getElementById("flight-info-panel").style.display = "none";
+      document.getElementById("accommodation-info-tab-btn").textContent = "������ 住宿資訊"; // 離開住宿分頁,重置文字(移除預覽/編輯後綴)
+      document.getElementById("accommodation-info-panel").style.display = "none";
       document.getElementById("itinerary-editor-wrap").style.display = "block";
       const content = itineraryDayContents[date] || "";
       if (content && content.includes("<")) {
@@ -1852,6 +1892,8 @@
     document.querySelectorAll("#itinerary-day-tabs .day-tab").forEach((b) => {
       b.textContent = b.dataset.baseLabel || b.textContent;
     });
+    document.getElementById("accommodation-info-tab-btn").textContent = "������ 住宿資訊"; // 離開住宿分頁,重置文字
+    document.getElementById("accommodation-info-panel").style.display = "none";
     document.getElementById("flight-info-tab-btn").classList.add("active");
     document.getElementById("itinerary-editor-wrap").style.display = "none";
     document.getElementById("flight-info-panel").style.display = "block";
@@ -1868,6 +1910,180 @@
     loadFlights();
   }
   document.getElementById("flight-info-tab-btn").addEventListener("click", showFlightInfoPanel);
+
+  // ---------- 住宿資訊 ----------
+  let currentAccommodations = [];
+  let editingAccommodationId = null;
+  let accommodationPanelMode = "preview"; // "preview":只看清單  "edit":顯示表單可新增/編輯
+
+  function applyAccommodationPanelMode() {
+    document.getElementById("accommodation-form-area").style.display = accommodationPanelMode === "edit" ? "block" : "none";
+    document.getElementById("accommodation-info-tab-btn").textContent =
+      accommodationPanelMode === "edit" ? "������ 住宿資訊(編)" : "������ 住宿資訊(預)";
+  }
+
+  const ACCOMMODATION_FORM_FIELDS = [
+    "accommodation-name", "accommodation-address", "accommodation-confirmation-no",
+    "accommodation-checkin-date", "accommodation-checkin-time",
+    "accommodation-checkout-date", "accommodation-checkout-time",
+    "accommodation-price", "accommodation-notes",
+  ];
+
+  async function loadAccommodations() {
+    if (!currentTripId) return;
+    const data = await apiFetch(`/api/trips/${currentTripId}/accommodations`);
+    currentAccommodations = data.accommodations || [];
+    renderAccommodationCards();
+  }
+
+  function renderAccommodationCards() {
+    const list = document.getElementById("accommodation-cards-list");
+    const emptyEl = document.getElementById("accommodation-empty");
+    list.innerHTML = "";
+    emptyEl.style.display = currentAccommodations.length === 0 ? "block" : "none";
+
+    for (const a of currentAccommodations) {
+      const card = document.createElement("div");
+      card.className = "flight-card";
+      const priceText = a.price !== null && a.price !== undefined && a.price !== ""
+        ? `${a.price} ${a.currency || "TWD"}` : "—";
+      card.innerHTML = `
+        <div class="flight-card-header">
+          <span class="flight-no">${a.name || ""}</span>
+          <span>${a.check_in_date || ""}${a.check_out_date ? " ~ " + a.check_out_date : ""}</span>
+        </div>
+        <div class="accommodation-card-body">
+          <div><span class="arow-label">入住</span>${a.check_in_date || ""} ${a.check_in_time || ""}</div>
+          <div><span class="arow-label">退房</span>${a.check_out_date || ""} ${a.check_out_time || ""}</div>
+          ${a.address ? `<div><span class="arow-label">地址</span>${a.address}</div>` : ""}
+          ${a.confirmation_no ? `<div><span class="arow-label">訂單編號</span>${a.confirmation_no}</div>` : ""}
+          <div><span class="arow-label">金額</span>${priceText}</div>
+        </div>
+        ${a.notes ? `<div class="flight-notes">${a.notes}</div>` : ""}
+      `;
+      const actionsWrap = document.createElement("div");
+      actionsWrap.className = "flight-card-actions";
+      const editBtn = document.createElement("button");
+      editBtn.className = "ghost";
+      editBtn.textContent = "編輯";
+      editBtn.addEventListener("click", () => startEditAccommodation(a));
+      const deleteBtn = document.createElement("button");
+      deleteBtn.className = "ghost";
+      deleteBtn.textContent = "刪除";
+      deleteBtn.addEventListener("click", async () => {
+        if (!confirm("確定要刪除這筆住宿資訊嗎?")) return;
+        try {
+          await apiFetch(`/api/accommodations/${a.id}`, { method: "DELETE" });
+          if (editingAccommodationId === a.id) cancelEditAccommodation();
+          loadAccommodations();
+        } catch (err) { alert("刪除失敗:" + err.message); }
+      });
+      actionsWrap.appendChild(editBtn);
+      actionsWrap.appendChild(deleteBtn);
+      card.appendChild(actionsWrap);
+      list.appendChild(card);
+    }
+  }
+
+  function clearAccommodationForm() {
+    ACCOMMODATION_FORM_FIELDS.forEach((id) => { document.getElementById(id).value = ""; });
+    document.getElementById("accommodation-currency").selectedIndex = 0;
+  }
+
+  function startEditAccommodation(a) {
+    editingAccommodationId = a.id;
+    accommodationPanelMode = "edit";
+    applyAccommodationPanelMode();
+    document.getElementById("accommodation-name").value = a.name || "";
+    document.getElementById("accommodation-address").value = a.address || "";
+    document.getElementById("accommodation-confirmation-no").value = a.confirmation_no || "";
+    document.getElementById("accommodation-checkin-date").value = a.check_in_date || "";
+    document.getElementById("accommodation-checkin-time").value = a.check_in_time || "";
+    document.getElementById("accommodation-checkout-date").value = a.check_out_date || "";
+    document.getElementById("accommodation-checkout-time").value = a.check_out_time || "";
+    document.getElementById("accommodation-price").value = a.price !== null && a.price !== undefined ? a.price : "";
+    document.getElementById("accommodation-currency").value = a.currency || "TWD";
+    document.getElementById("accommodation-notes").value = a.notes || "";
+    document.getElementById("accommodation-add-btn").textContent = "更新住宿";
+    document.getElementById("accommodation-cancel-edit-btn").style.display = "inline-block";
+    document.getElementById("accommodation-status").textContent = "編輯中...";
+    document.getElementById("accommodation-name").scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  function cancelEditAccommodation() {
+    editingAccommodationId = null;
+    clearAccommodationForm();
+    document.getElementById("accommodation-add-btn").textContent = "新增住宿";
+    document.getElementById("accommodation-cancel-edit-btn").style.display = "none";
+    document.getElementById("accommodation-status").textContent = "";
+  }
+  document.getElementById("accommodation-cancel-edit-btn").addEventListener("click", cancelEditAccommodation);
+
+  document.getElementById("accommodation-add-btn").addEventListener("click", async () => {
+    const statusEl = document.getElementById("accommodation-status");
+    const body = {
+      name: document.getElementById("accommodation-name").value,
+      address: document.getElementById("accommodation-address").value,
+      confirmationNo: document.getElementById("accommodation-confirmation-no").value,
+      checkInDate: document.getElementById("accommodation-checkin-date").value,
+      checkInTime: document.getElementById("accommodation-checkin-time").value,
+      checkOutDate: document.getElementById("accommodation-checkout-date").value,
+      checkOutTime: document.getElementById("accommodation-checkout-time").value,
+      price: document.getElementById("accommodation-price").value === "" ? null : parseFloat(document.getElementById("accommodation-price").value),
+      currency: document.getElementById("accommodation-currency").value,
+      notes: document.getElementById("accommodation-notes").value,
+    };
+    if (!body.name) { alert("請輸入住宿名稱"); return; }
+    statusEl.textContent = editingAccommodationId ? "正在更新..." : "正在儲存...";
+    try {
+      if (editingAccommodationId) {
+        await apiFetch(`/api/accommodations/${editingAccommodationId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        statusEl.textContent = "已更新";
+        cancelEditAccommodation();
+      } else {
+        await apiFetch(`/api/trips/${currentTripId}/accommodations`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        clearAccommodationForm();
+        statusEl.textContent = "已新增";
+      }
+      loadAccommodations();
+    } catch (err) {
+      statusEl.textContent = (editingAccommodationId ? "更新失敗:" : "新增失敗:") + err.message;
+    }
+  });
+
+  function showAccommodationInfoPanel() {
+    const wasActive = document.getElementById("accommodation-info-tab-btn").classList.contains("active");
+    document.querySelectorAll(".day-tab").forEach((b) => b.classList.remove("active"));
+    // 恢復日期分頁按鈕的文字(移除切到行程分頁時加上的 (預)/(編) 後綴)
+    document.querySelectorAll("#itinerary-day-tabs .day-tab").forEach((b) => {
+      b.textContent = b.dataset.baseLabel || b.textContent;
+    });
+    document.getElementById("flight-info-tab-btn").textContent = "✈ 航班資訊"; // 離開航班分頁,重置文字
+    document.getElementById("flight-info-panel").style.display = "none";
+    document.getElementById("accommodation-info-tab-btn").classList.add("active");
+    document.getElementById("itinerary-editor-wrap").style.display = "none";
+    document.getElementById("accommodation-info-panel").style.display = "block";
+    currentItineraryDate = null; // 離開日期分頁,重置記錄,之後點回任何一天都會重新從預覽模式開始
+
+    if (wasActive) {
+      // 已經在住宿資訊畫面時再按一次,切換預覽/編輯模式
+      accommodationPanelMode = accommodationPanelMode === "edit" ? "preview" : "edit";
+    } else {
+      // 從其他分頁切過來,一律先進入預覽模式
+      accommodationPanelMode = "preview";
+    }
+    applyAccommodationPanelMode();
+    loadAccommodations();
+  }
+  document.getElementById("accommodation-info-tab-btn").addEventListener("click", showAccommodationInfoPanel);
 
   // ---------- 行程詳細 ----------
   document.getElementById("back-to-trips").addEventListener("click", () => switchView("trips"));
