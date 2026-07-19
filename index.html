@@ -131,8 +131,15 @@
   }
   #gallery.media-batch-edit-active .media-select-checkbox { display: block; }
   #media-batch-edit-toggle-btn.active { background: var(--teal); color: var(--paper); border-color: var(--teal); font-weight: 600; }
-  .media-thumb { width: 100%; aspect-ratio: 4/3; background: var(--bg-softer); display: flex; align-items: center; justify-content: center; color: rgba(59,42,33,0.35); font-size: 12px; cursor: pointer; }
+  .media-thumb { position: relative; width: 100%; aspect-ratio: 4/3; background: var(--bg-softer); display: flex; align-items: center; justify-content: center; color: rgba(59,42,33,0.35); font-size: 12px; cursor: pointer; }
   .media-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .video-play-overlay {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 40px; height: 40px; border-radius: 50%;
+    background: rgba(0,0,0,0.45); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; pointer-events: none;
+  }
 
   .lightbox-overlay {
     position: fixed; inset: 0; background: rgba(20,14,10,0.75);
@@ -2156,18 +2163,22 @@
     thumb.title = "點擊預覽";
     thumb.addEventListener("click", () => openLightbox(currentSortedMediaItems, idx));
     const isVideo = (m.mime_type || "").startsWith("video");
-    // 影片一律不跟 Drive 要縮圖,直接顯示靜態圖示就好——大型影片檔案(例如上百 MB),
-    // Google 產生縮圖的行為可能不穩定或耗時很久,容易拖垮整個縮圖載入佇列。
     // 縮圖改成打自己的 Worker API(由後端代為向 Drive 拿圖),不再直接連
     // drive.google.com,避免使用者瀏覽器對 Google 帳號的登入狀態不穩定造成縮圖時好時壞。
-    const thumbPath = isVideo
-      ? null
-      : (m.drive_file_id ? `/api/media/${m.id}/thumbnail?size=300` : null);
+    // 影片也一併嘗試要縮圖(疊加播放圖示);如果該影片沒有縮圖可用,Worker 會回傳錯誤,
+    // 這裡就只留下播放圖示、底圖維持空白,不會卡住或顯示壞掉的圖示。
+    const thumbPath = m.drive_file_id ? `/api/media/${m.id}/thumbnail?size=300` : null;
     if (thumbPath) {
       const img = document.createElement("img");
       img.loading = "lazy";
       thumb.appendChild(img);
       queueImageLoad(img, thumbPath);
+      if (isVideo) {
+        const overlay = document.createElement("div");
+        overlay.className = "video-play-overlay";
+        overlay.textContent = "▶";
+        thumb.appendChild(overlay);
+      }
     } else {
       thumb.textContent = isVideo ? "▶ 影片" : "檔案";
     }
