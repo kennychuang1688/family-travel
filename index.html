@@ -205,6 +205,10 @@
   .trip-title { font-family: Georgia, "Noto Serif TC", serif; font-size: 26px; color: var(--gold); margin: 0 0 4px; }
   .trip-sub { font-size: 13px; color: rgba(59,42,33,0.5); margin-bottom: 20px; }
   .total-line { text-align: right; font-size: 13px; color: var(--gold); margin-top: 8px; }
+  .expenses-bottom-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; flex-wrap: wrap; margin-top: 16px; }
+  .exchange-rate-inline { flex: 1 1 260px; min-width: 220px; }
+  .exchange-rate-inline .form-grid { margin-bottom: 6px; }
+  .expenses-bottom-row #expenses-total { flex: 0 0 auto; text-align: right; }
   .view { display: none; }
   .view.active { display: block; }
 
@@ -553,16 +557,18 @@
         <button class="primary" id="add-expense-btn">新增費用</button>
         <button class="ghost" id="expense-cancel-edit-btn" style="display:none;">取消編輯</button>
         <table style="margin-top:16px;">
-          <thead><tr><th>日期</th><th>類別</th><th>說明</th><th>金額</th><th>約合台幣</th><th></th></tr></thead>
+          <thead><tr><th>日期</th><th>類別</th><th>說明</th><th>金額</th><th>約合台幣</th><th style="text-align:right;"></th></tr></thead>
           <tbody id="expenses-tbody"></tbody>
         </table>
-        <div id="expenses-total"></div>
+        <div class="expenses-bottom-row">
+          <div class="exchange-rate-inline">
+            <h2>匯率設定(對台幣 TWD)</h2>
+            <div class="form-grid" id="exchange-rate-grid"></div>
+            <div class="status-line" id="exchange-rate-status"></div>
+          </div>
+          <div id="expenses-total"></div>
+        </div>
         <div class="empty" id="expenses-empty" style="display:none;">還沒有費用紀錄。</div>
-      </div>
-      <div class="panel">
-        <h2>匯率設定(對台幣 TWD)</h2>
-        <div class="form-grid" id="exchange-rate-grid"></div>
-        <div class="status-line" id="exchange-rate-status"></div>
       </div>
     </div>
 
@@ -2480,13 +2486,13 @@
       }
 
       const tr = document.createElement("tr");
-      tr.innerHTML = `<td>${e.date || ""}</td><td>${e.category || ""}</td><td>${e.description || ""}</td><td>${e.amount} ${e.currency}</td><td>${twdText}</td><td></td>`;
+      tr.innerHTML = `<td>${e.date || ""}</td><td>${e.category || ""}</td><td>${e.description || ""}</td><td>${e.amount} ${e.currency}</td><td>${twdText}</td><td style="text-align:right; white-space:nowrap;"></td>`;
       const editBtn = document.createElement("button");
       editBtn.className = "ghost";
       editBtn.textContent = "編輯";
       editBtn.addEventListener("click", () => startEditExpense(e));
       const deleteBtn = document.createElement("button");
-      deleteBtn.className = "danger";
+      deleteBtn.className = "ghost";
       deleteBtn.textContent = "刪除";
       deleteBtn.addEventListener("click", async () => {
         if (!confirm("確定要刪除這筆費用紀錄嗎?")) return;
