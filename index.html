@@ -208,6 +208,9 @@
   .expenses-bottom-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; flex-wrap: wrap; margin-top: 16px; }
   .exchange-rate-inline { flex: 1 1 260px; min-width: 220px; }
   .exchange-rate-inline .form-grid { margin-bottom: 6px; }
+  .exchange-rate-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 14px; }
+  .exchange-rate-row select, .exchange-rate-row input { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-softer); color: var(--ink); font-size: 14px; }
+  .exchange-rate-row input { width: 120px; }
   .expenses-bottom-row #expenses-total { flex: 0 0 auto; text-align: right; }
   .view { display: none; }
   .view.active { display: block; }
@@ -551,6 +554,7 @@
             <select id="expense-currency">
               <option value="TWD">TWD</option>
               <option value="JPY">JPY</option>
+              <option value="USD">USD</option>
             </select>
           </label>
         </div>
@@ -562,8 +566,15 @@
         </table>
         <div class="expenses-bottom-row">
           <div class="exchange-rate-inline">
-            <h2>匯率設定(對台幣 TWD)</h2>
-            <div class="form-grid" id="exchange-rate-grid"></div>
+            <h2>匯率設定</h2>
+            <div class="exchange-rate-row">
+              <span>1</span>
+              <select id="exchange-rate-currency"></select>
+              <span>元 =</span>
+              <input type="number" id="exchange-rate-value" step="0.0001" min="0" placeholder="輸入匯率" />
+              <span>台幣</span>
+              <button class="primary" id="exchange-rate-save-btn">儲存</button>
+            </div>
             <div class="status-line" id="exchange-rate-status"></div>
           </div>
           <div id="expenses-total"></div>
@@ -2405,7 +2416,10 @@
 
   // ---- 費用 / 匯率 ----
   // 幣別是否需要另外設定匯率(TWD 本身固定是 1,不需要設定)
-  const EXCHANGE_RATE_CURRENCIES = ["JPY"];
+  const EXCHANGE_RATE_CURRENCIES = [
+    { code: "JPY", label: "日幣 JPY" },
+    { code: "USD", label: "美金 USD" },
+  ];
   let exchangeRates = {}; // { JPY: 0.22, USD: 32.5, ... } 對台幣的匯率,尚未設定的幣別不會有這個 key
 
   async function loadExchangeRates() {
@@ -2416,43 +2430,47 @@
   }
 
   function renderExchangeRateInputs() {
-    const grid = document.getElementById("exchange-rate-grid");
-    grid.innerHTML = "";
-    EXCHANGE_RATE_CURRENCIES.forEach((cur) => {
-      const label = document.createElement("label");
-      label.className = "field";
-      label.textContent = `1 ${cur} = ? TWD`;
-
-      const input = document.createElement("input");
-      input.type = "number";
-      input.step = "0.0001";
-      input.min = "0";
-      input.placeholder = "尚未設定";
-      if (exchangeRates[cur] !== undefined) input.value = exchangeRates[cur];
-
-      input.addEventListener("change", async () => {
-        const rate = parseFloat(input.value);
-        if (!rate || rate <= 0) { alert("請輸入大於 0 的匯率數字"); return; }
-        const statusEl = document.getElementById("exchange-rate-status");
-        try {
-          await apiFetch(`/api/trips/${currentTripId}/exchange-rates/${cur}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ rate }),
-          });
-          exchangeRates[cur] = rate;
-          statusEl.textContent = `已更新 ${cur} 匯率:1 ${cur} = ${rate} TWD`;
-          loadExpenses(); // 重新整理費用表,讓每一筆的台幣換算與總計套用最新匯率
-        } catch (err) {
-          statusEl.textContent = "";
-          alert("更新匯率失敗:" + err.message);
-        }
+    const select = document.getElementById("exchange-rate-currency");
+    if (!select.dataset.initialized) {
+      select.innerHTML = "";
+      EXCHANGE_RATE_CURRENCIES.forEach(({ code, label }) => {
+        const opt = document.createElement("option");
+        opt.value = code;
+        opt.textContent = label;
+        select.appendChild(opt);
       });
-
-      label.appendChild(input);
-      grid.appendChild(label);
-    });
+      select.dataset.initialized = "true";
+      select.addEventListener("change", updateExchangeRateValueField);
+    }
+    updateExchangeRateValueField();
   }
+
+  function updateExchangeRateValueField() {
+    const cur = document.getElementById("exchange-rate-currency").value;
+    const valueInput = document.getElementById("exchange-rate-value");
+    valueInput.value = exchangeRates[cur] !== undefined ? exchangeRates[cur] : "";
+    document.getElementById("exchange-rate-status").textContent = "";
+  }
+
+  document.getElementById("exchange-rate-save-btn").addEventListener("click", async () => {
+    const cur = document.getElementById("exchange-rate-currency").value;
+    const rate = parseFloat(document.getElementById("exchange-rate-value").value);
+    const statusEl = document.getElementById("exchange-rate-status");
+    if (!rate || rate <= 0) { alert("請輸入大於 0 的匯率數字"); return; }
+    try {
+      await apiFetch(`/api/trips/${currentTripId}/exchange-rates/${cur}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rate }),
+      });
+      exchangeRates[cur] = rate;
+      statusEl.textContent = `已更新:1 ${cur} = ${rate} TWD`;
+      loadExpenses(); // 重新整理費用表,讓每一筆的台幣換算與總計套用最新匯率
+    } catch (err) {
+      statusEl.textContent = "";
+      alert("更新匯率失敗:" + err.message);
+    }
+  });
 
   function getRateFor(currency) {
     if (currency === "TWD") return 1;
