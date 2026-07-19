@@ -562,7 +562,7 @@
         <button class="primary" id="add-expense-btn">新增費用</button>
         <button class="ghost" id="expense-cancel-edit-btn" style="display:none;">取消編輯</button>
         <table style="margin-top:16px;">
-          <thead><tr><th>日期</th><th>類別</th><th>說明</th><th>金額</th><th>約合台幣</th><th style="text-align:right;"></th></tr></thead>
+          <thead><tr><th>消費日期</th><th>類別</th><th>說明</th><th>金額</th><th>約合台幣</th><th style="text-align:right;"></th></tr></thead>
           <tbody id="expenses-tbody"></tbody>
         </table>
         <div class="expenses-bottom-row">
@@ -575,6 +575,7 @@
               <input type="number" id="exchange-rate-value" step="0.0001" min="0" placeholder="輸入匯率" />
               <span>台幣</span>
               <button class="primary" id="exchange-rate-save-btn">儲存</button>
+              <button class="ghost" id="exchange-rate-clear-btn">清除</button>
             </div>
             <div class="status-line" id="exchange-rate-status"></div>
           </div>
@@ -2479,6 +2480,21 @@
       loadExpenses(); // 重新整理費用表,讓每一筆的台幣換算與總計套用最新匯率
     } catch (err) {
       alert("更新匯率失敗:" + err.message);
+    }
+  });
+
+  document.getElementById("exchange-rate-clear-btn").addEventListener("click", async () => {
+    const cur = document.getElementById("exchange-rate-currency").value;
+    if (exchangeRates[cur] === undefined) return; // 本來就沒設定,不用做任何事
+    if (!confirm(`確定要清除 ${cur} 的匯率設定嗎?`)) return;
+    try {
+      await apiFetch(`/api/trips/${currentTripId}/exchange-rates/${cur}`, { method: "DELETE" });
+      delete exchangeRates[cur];
+      document.getElementById("exchange-rate-value").value = "";
+      renderExchangeRateStatus();
+      loadExpenses(); // 重新整理費用表,讓已清除的幣別回到「尚未設定匯率」狀態
+    } catch (err) {
+      alert("清除匯率失敗:" + err.message);
     }
   });
 
