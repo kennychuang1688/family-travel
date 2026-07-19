@@ -529,11 +529,6 @@
 
     <div id="trip-sub-expenses" class="trip-subview">
       <div class="panel">
-        <h2>匯率設定(對台幣 TWD)</h2>
-        <div class="form-grid" id="exchange-rate-grid"></div>
-        <div class="status-line" id="exchange-rate-status"></div>
-      </div>
-      <div class="panel">
         <h2>費用花費</h2>
         <div class="form-grid">
           <label class="field">日期<input type="date" id="expense-date" /></label>
@@ -556,12 +551,18 @@
           </label>
         </div>
         <button class="primary" id="add-expense-btn">新增費用</button>
+        <button class="ghost" id="expense-cancel-edit-btn" style="display:none;">取消編輯</button>
         <table style="margin-top:16px;">
           <thead><tr><th>日期</th><th>類別</th><th>說明</th><th>金額</th><th>約合台幣</th><th></th></tr></thead>
           <tbody id="expenses-tbody"></tbody>
         </table>
         <div id="expenses-total"></div>
         <div class="empty" id="expenses-empty" style="display:none;">還沒有費用紀錄。</div>
+      </div>
+      <div class="panel">
+        <h2>匯率設定(對台幣 TWD)</h2>
+        <div class="form-grid" id="exchange-rate-grid"></div>
+        <div class="status-line" id="exchange-rate-status"></div>
       </div>
     </div>
 
@@ -2473,20 +2474,27 @@
       if (rate) {
         const twdAmount = e.amount * rate;
         twdTotal += twdAmount;
-        twdText = `約 ${Math.round(twdAmount).toLocaleString()}`;
+        twdText = `${Math.round(twdAmount).toLocaleString()}`;
       } else {
         missingRateCount++;
       }
 
       const tr = document.createElement("tr");
       tr.innerHTML = `<td>${e.date || ""}</td><td>${e.category || ""}</td><td>${e.description || ""}</td><td>${e.amount} ${e.currency}</td><td>${twdText}</td><td></td>`;
+      const editBtn = document.createElement("button");
+      editBtn.className = "ghost";
+      editBtn.textContent = "編輯";
+      editBtn.addEventListener("click", () => startEditExpense(e));
       const deleteBtn = document.createElement("button");
       deleteBtn.className = "danger";
       deleteBtn.textContent = "刪除";
       deleteBtn.addEventListener("click", async () => {
+        if (!confirm("確定要刪除這筆費用紀錄嗎?")) return;
         await apiFetch(`/api/expenses/${e.id}`, { method: "DELETE" });
+        if (editingExpenseId === e.id) cancelEditExpense();
         loadExpenses();
       });
+      tr.lastElementChild.appendChild(editBtn);
       tr.lastElementChild.appendChild(deleteBtn);
       tbody.appendChild(tr);
     }
@@ -2499,6 +2507,30 @@
     totalEl.innerHTML = totalHtml;
   }
 
+  let editingExpenseId = null;
+
+  function startEditExpense(e) {
+    editingExpenseId = e.id;
+    document.getElementById("expense-date").value = e.date || "";
+    document.getElementById("expense-category").value = e.category || "交通";
+    document.getElementById("expense-desc").value = e.description || "";
+    document.getElementById("expense-amount").value = e.amount;
+    document.getElementById("expense-currency").value = e.currency || "TWD";
+    document.getElementById("add-expense-btn").textContent = "更新費用";
+    document.getElementById("expense-cancel-edit-btn").style.display = "inline-block";
+    document.getElementById("expense-date").scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  function cancelEditExpense() {
+    editingExpenseId = null;
+    ["expense-date","expense-desc","expense-amount"].forEach(id => document.getElementById(id).value = "");
+    document.getElementById("expense-category").selectedIndex = 0;
+    document.getElementById("expense-currency").selectedIndex = 0;
+    document.getElementById("add-expense-btn").textContent = "新增費用";
+    document.getElementById("expense-cancel-edit-btn").style.display = "none";
+  }
+  document.getElementById("expense-cancel-edit-btn").addEventListener("click", cancelEditExpense);
+
   document.getElementById("add-expense-btn").addEventListener("click", async () => {
     const date = document.getElementById("expense-date").value;
     const category = document.getElementById("expense-category").value;
@@ -2506,13 +2538,22 @@
     const amount = parseFloat(document.getElementById("expense-amount").value);
     const currency = document.getElementById("expense-currency").value;
     if (isNaN(amount)) { alert("請輸入金額"); return; }
-    await apiFetch(`/api/trips/${currentTripId}/expenses`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ date, category, description, amount, currency }),
-    });
-    ["expense-date","expense-desc","expense-amount"].forEach(id => document.getElementById(id).value = "");
-    document.getElementById("expense-category").selectedIndex = 0;
+    if (editingExpenseId) {
+      await apiFetch(`/api/expenses/${editingExpenseId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date, category, description, amount, currency }),
+      });
+      cancelEditExpense();
+    } else {
+      await apiFetch(`/api/trips/${currentTripId}/expenses`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date, category, description, amount, currency }),
+      });
+      ["expense-date","expense-desc","expense-amount"].forEach(id => document.getElementById(id).value = "");
+      document.getElementById("expense-category").selectedIndex = 0;
+    }
     loadExpenses();
   });
 
