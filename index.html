@@ -327,6 +327,54 @@
   .accommodation-card-body { font-size: 13px; line-height: 1.9; }
   .accommodation-card-body .arow-label { color: rgba(59,42,33,0.55); margin-right: 6px; }
 
+  .itinerary-cards-toolbar { margin: 14px 0 6px; }
+  .itinerary-cards-toolbar button {
+    background: #fff; border: 1px solid var(--line); border-radius: 999px;
+    padding: 8px 16px; font-size: 13px; color: var(--ink); cursor: pointer;
+  }
+  .itinerary-cards-toolbar button:hover { background: var(--bg-softer); }
+
+  .itinerary-card {
+    display: grid;
+    grid-template-columns: 92px 1fr 44px;
+    gap: 14px;
+    align-items: stretch;
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    padding: 16px 18px;
+    margin-bottom: 14px;
+    background: #fff;
+  }
+  .itinerary-card-left { display: flex; flex-direction: column; gap: 8px; }
+  .itinerary-card-left input, .itinerary-card-left select {
+    padding: 7px 8px; border: 1px solid var(--line); border-radius: 8px;
+    background: var(--bg-softer); color: var(--ink); font-size: 13px; width: 100%;
+  }
+  .itinerary-card-main { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .itinerary-card-main input, .itinerary-card-main textarea {
+    border: 1px solid var(--line); border-radius: 8px; background: var(--bg-softer);
+    color: var(--ink); padding: 7px 10px; width: 100%; font-family: "Iansui", "Noto Sans TC", sans-serif;
+    resize: vertical;
+  }
+  .itinerary-card-title { font-size: 19px; font-weight: 600; }
+  .itinerary-card-desc { font-size: 14px; min-height: 40px; }
+  .itinerary-card-notes { font-size: 14px; }
+  .itinerary-card-right { display: flex; flex-direction: column; justify-content: space-between; align-items: center; }
+  .itinerary-card-right button {
+    border: none; background: transparent; cursor: pointer; font-size: 20px;
+    line-height: 1; padding: 4px; border-radius: 8px; color: var(--gold);
+  }
+  .itinerary-card-right button:hover { background: var(--bg-softer); }
+  .itinerary-card-right .itinerary-card-delete-btn { color: #b5473b; }
+  .itinerary-card input:disabled, .itinerary-card select:disabled, .itinerary-card textarea:disabled {
+    background: transparent; border-color: transparent; opacity: 0.85; cursor: default;
+  }
+  @media (max-width: 560px) {
+    .itinerary-card { grid-template-columns: 1fr; }
+    .itinerary-card-left { flex-direction: row; }
+    .itinerary-card-right { flex-direction: row; justify-content: flex-end; gap: 10px; }
+  }
+
   #itinerary-editor.ql-container.ql-snow {
     background: var(--bg-softer);
     border-color: var(--line);
@@ -463,6 +511,10 @@
         </div>
         <div id="itinerary-editor-wrap">
           <div id="itinerary-editor"></div>
+          <div class="itinerary-cards-toolbar">
+            <button type="button" class="ghost" id="add-itinerary-card-btn">➕ 新增行程表格</button>
+          </div>
+          <div id="itinerary-cards-container"></div>
         </div>
         <div class="form-actions" style="margin-top:14px;">
           <span class="status-line" id="itinerary-status">已儲存</span>
@@ -891,6 +943,8 @@
   let itineraryDayContents = {};
   let currentItineraryDate = null;
   let currentTripTitle = "";
+  let currentItineraryCards = []; // 目前這一天的「行程表格」卡片清單
+  let itineraryCardSaveTimers = {};
 
   // ---------- 自訂 Quill 格式:書籤標記 / 書籤連結 ----------
   // (一定要在 new Quill(...) 之前註冊,否則 Quill 不認得這個格式,
@@ -1605,6 +1659,166 @@
     });
   }
 
+  // ---------- 行程表格卡片(每日行程裡,結構化的單一景點/交通/美食項目) ----------
+  const ITINERARY_CARD_CATEGORIES = ["景點", "交通", "美食", "購物", "其它"];
+
+  function scheduleCardSave(cardId) {
+    clearTimeout(itineraryCardSaveTimers[cardId]);
+    itineraryCardSaveTimers[cardId] = setTimeout(() => saveItineraryCard(cardId), 800);
+  }
+
+  async function saveItineraryCard(cardId) {
+    const card = currentItineraryCards.find((c) => c.id === cardId);
+    if (!card) return;
+    try {
+      await apiFetch(`/api/itinerary-cards/${cardId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          time: card.time, category: card.category, title: card.title,
+          description: card.description, notes: card.notes,
+        }),
+      });
+    } catch (err) {
+      alert("行程項目儲存失敗:" + err.message);
+    }
+  }
+
+  function buildItineraryCardEl(card) {
+    const isEdit = itineraryDayMode === "edit";
+    const wrap = document.createElement("div");
+    wrap.className = "itinerary-card";
+    wrap.dataset.id = card.id;
+
+    // 左欄:時間 + 類別
+    const leftCol = document.createElement("div");
+    leftCol.className = "itinerary-card-left";
+    const timeInput = document.createElement("input");
+    timeInput.type = "time";
+    timeInput.step = 60;
+    timeInput.value = card.time || "";
+    timeInput.disabled = !isEdit;
+    timeInput.addEventListener("change", () => { card.time = timeInput.value; scheduleCardSave(card.id); });
+
+    const categorySelect = document.createElement("select");
+    categorySelect.disabled = !isEdit;
+    ITINERARY_CARD_CATEGORIES.forEach((cat) => {
+      const opt = document.createElement("option");
+      opt.value = cat;
+      opt.textContent = cat;
+      if (cat === (card.category || "景點")) opt.selected = true;
+      categorySelect.appendChild(opt);
+    });
+    categorySelect.addEventListener("change", () => { card.category = categorySelect.value; scheduleCardSave(card.id); });
+
+    leftCol.appendChild(timeInput);
+    leftCol.appendChild(categorySelect);
+
+    // 中間:行程名稱 / 說明 / 備註
+    const mainCol = document.createElement("div");
+    mainCol.className = "itinerary-card-main";
+
+    const titleInput = document.createElement("input");
+    titleInput.type = "text";
+    titleInput.className = "itinerary-card-title";
+    titleInput.placeholder = "行程名稱";
+    titleInput.value = card.title || "";
+    titleInput.disabled = !isEdit;
+    titleInput.addEventListener("input", () => { card.title = titleInput.value; scheduleCardSave(card.id); });
+
+    const descInput = document.createElement("textarea");
+    descInput.className = "itinerary-card-desc";
+    descInput.placeholder = "行程說明";
+    descInput.rows = 2;
+    descInput.value = card.description || "";
+    descInput.disabled = !isEdit;
+    descInput.addEventListener("input", () => { card.description = descInput.value; scheduleCardSave(card.id); });
+
+    const notesInput = document.createElement("input");
+    notesInput.type = "text";
+    notesInput.className = "itinerary-card-notes";
+    notesInput.placeholder = "備註";
+    notesInput.value = card.notes || "";
+    notesInput.disabled = !isEdit;
+    notesInput.addEventListener("input", () => { card.notes = notesInput.value; scheduleCardSave(card.id); });
+
+    mainCol.appendChild(titleInput);
+    mainCol.appendChild(descInput);
+    mainCol.appendChild(notesInput);
+
+    // 右欄:導航(對應行程名稱)+ 刪除
+    const rightCol = document.createElement("div");
+    rightCol.className = "itinerary-card-right";
+
+    const navBtn = document.createElement("button");
+    navBtn.type = "button";
+    navBtn.title = "在 Google 地圖導航到這個地點";
+    navBtn.textContent = "������";
+    navBtn.addEventListener("click", () => {
+      const query = (card.title || "").trim();
+      if (!query) { alert("請先輸入行程名稱,才能導航"); return; }
+      window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`, "_blank");
+    });
+
+    const delBtn = document.createElement("button");
+    delBtn.type = "button";
+    delBtn.className = "itinerary-card-delete-btn";
+    delBtn.title = "刪除這個行程項目";
+    delBtn.textContent = "������";
+    delBtn.style.display = isEdit ? "" : "none";
+    delBtn.addEventListener("click", async () => {
+      if (!confirm("確定要刪除這個行程項目嗎?")) return;
+      try {
+        await apiFetch(`/api/itinerary-cards/${card.id}`, { method: "DELETE" });
+        currentItineraryCards = currentItineraryCards.filter((c) => c.id !== card.id);
+        renderItineraryCards();
+      } catch (err) {
+        alert("刪除失敗:" + err.message);
+      }
+    });
+
+    rightCol.appendChild(navBtn);
+    rightCol.appendChild(delBtn);
+
+    wrap.appendChild(leftCol);
+    wrap.appendChild(mainCol);
+    wrap.appendChild(rightCol);
+    return wrap;
+  }
+
+  function renderItineraryCards() {
+    const container = document.getElementById("itinerary-cards-container");
+    if (!container) return;
+    container.innerHTML = "";
+    currentItineraryCards.forEach((card) => container.appendChild(buildItineraryCardEl(card)));
+  }
+
+  async function loadItineraryCards(date) {
+    if (!currentTripId || !date) return;
+    try {
+      const data = await apiFetch(`/api/trips/${currentTripId}/itinerary-days/${date}/cards`);
+      currentItineraryCards = data.cards || [];
+    } catch (err) {
+      currentItineraryCards = [];
+    }
+    renderItineraryCards();
+  }
+
+  document.getElementById("add-itinerary-card-btn").addEventListener("click", async () => {
+    if (!currentItineraryDate) { alert("請先選擇一個日期分頁"); return; }
+    try {
+      const res = await apiFetch(`/api/trips/${currentTripId}/itinerary-days/${currentItineraryDate}/cards`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ time: "", category: "景點", title: "", description: "", notes: "" }),
+      });
+      currentItineraryCards.push({ id: res.id, time: "", category: "景點", title: "", description: "", notes: "" });
+      renderItineraryCards();
+    } catch (err) {
+      alert("新增行程表格失敗:" + err.message);
+    }
+  });
+
   async function saveCurrentDayContent(silent) {
     if (!currentItineraryDate || !currentTripId) return;
     const html = quillItinerary.root.innerHTML;
@@ -1648,6 +1862,10 @@
     if (toolbarEl) toolbarEl.style.display = isEdit ? "" : "none";
     if (quillItinerary) quillItinerary.enable(isEdit);
 
+    const addCardBtn = document.getElementById("add-itinerary-card-btn");
+    if (addCardBtn) addCardBtn.style.display = isEdit ? "inline-block" : "none";
+    renderItineraryCards(); // 用目前的預覽/編輯模式,重新套用行程表格卡片是否可編輯
+
     // 更新目前作用中那個日期分頁按鈕的文字,加上 (預)/(編) 後綴;其他分頁維持原本文字
     document.querySelectorAll("#itinerary-day-tabs .day-tab").forEach((b) => {
       const base = b.dataset.baseLabel || b.textContent;
@@ -1683,6 +1901,8 @@
       }
       document.getElementById("itinerary-status").textContent = "已儲存";
       itineraryDayMode = "preview"; // 切到不同的一天,一律先進入預覽模式
+      currentItineraryCards = []; // 先清空,避免切換瞬間短暫顯示上一天的舊卡片
+      loadItineraryCards(date); // 載入這一天的行程表格卡片
     } else {
       // 已經在看這一天,再點一次同一個分頁,只是切換預覽/編輯模式:
       // 千萬不能重新載入內容(畫面上就是最新的,重新載入反而會蓋掉還沒存檔的修改)
