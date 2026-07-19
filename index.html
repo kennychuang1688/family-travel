@@ -2831,28 +2831,36 @@
     canvas.style.display = "block";
     emptyEl.style.display = "none";
 
-    if (expenseCategoryChart) expenseCategoryChart.destroy();
-    expenseCategoryChart = new Chart(canvas.getContext("2d"), {
-      type: "pie",
-      data: {
-        labels,
-        datasets: [{ data, backgroundColor: EXPENSE_CHART_COLORS, borderColor: "#fff7e8", borderWidth: 2 }],
-      },
-      options: {
-        plugins: {
-          legend: { position: "bottom", labels: { color: "#3b2a21", font: { size: 12 } } },
-          tooltip: {
-            callbacks: {
-              label: (ctx) => {
-                const value = ctx.parsed;
-                const pct = total > 0 ? ((value / total) * 100).toFixed(1) : "0.0";
-                return `${ctx.label}:${Math.round(value).toLocaleString()} 元 (${pct}%)`;
+    try {
+      if (expenseCategoryChart) expenseCategoryChart.destroy();
+      expenseCategoryChart = new Chart(canvas.getContext("2d"), {
+        type: "pie",
+        data: {
+          labels,
+          datasets: [{ data, backgroundColor: EXPENSE_CHART_COLORS, borderColor: "#fff7e8", borderWidth: 2 }],
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { position: "bottom", labels: { color: "#3b2a21", font: { size: 12 } } },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => {
+                  const value = ctx.parsed;
+                  const pct = total > 0 ? ((value / total) * 100).toFixed(1) : "0.0";
+                  return `${ctx.label}:${Math.round(value).toLocaleString()} 元 (${pct}%)`;
+                },
               },
             },
           },
         },
-      },
-    });
+      });
+    } catch (err) {
+      // 圖表建立過程中如果出錯,把錯誤訊息直接顯示出來,方便排查(而不是整塊空白看不出原因)
+      canvas.style.display = "none";
+      emptyEl.textContent = "圖表繪製發生錯誤:" + err.message;
+      emptyEl.style.display = "block";
+    }
   }
 
   let editingExpenseId = null;
