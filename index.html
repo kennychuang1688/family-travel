@@ -1767,6 +1767,7 @@
           time: card.time, category: card.category, title: card.title,
           description: card.description, notes: card.notes,
           durationValue: card.duration_value, durationUnit: card.duration_unit,
+          mapLink: card.map_link,
         }),
       });
     } catch (err) {
@@ -1948,12 +1949,24 @@
 
     const navBtn = document.createElement("button");
     navBtn.type = "button";
-    navBtn.title = "在 Google 地圖導航到這個地點";
+    navBtn.title = "開啟地點連結";
     navBtn.textContent = "➤";
     navBtn.addEventListener("click", () => {
-      const query = (card.title || "").trim();
-      if (!query) { alert("請先輸入行程名稱,才能導航"); return; }
-      window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`, "_blank");
+      const link = (card.map_link || "").trim();
+      if (!link) { alert("這個行程項目還沒有設定地點連結,請先點旁邊的「✎」設定一個連結(例如 Google 地圖分享連結)。"); return; }
+      window.open(link, "_blank", "noopener");
+    });
+
+    const editLinkBtn = document.createElement("button");
+    editLinkBtn.type = "button";
+    editLinkBtn.className = "itinerary-card-edit-link-btn itinerary-card-move-btn";
+    editLinkBtn.title = "設定/修改地點連結";
+    editLinkBtn.textContent = "✎";
+    editLinkBtn.addEventListener("click", () => {
+      const input = prompt("請輸入這個地點的連結(例如 Google 地圖分享連結),留空可以清除:", card.map_link || "");
+      if (input === null) return; // 使用者按了取消
+      card.map_link = input.trim();
+      scheduleCardSave(card.id);
     });
 
     const upBtn = document.createElement("button");
@@ -1996,12 +2009,17 @@
       }
     });
 
+    const navGroup = document.createElement("div");
+    navGroup.className = "itinerary-card-move-group";
+    navGroup.appendChild(navBtn);
+    navGroup.appendChild(editLinkBtn);
+
     const moveGroup = document.createElement("div");
     moveGroup.className = "itinerary-card-move-group";
     moveGroup.appendChild(upBtn);
     moveGroup.appendChild(downBtn);
 
-    rightCol.appendChild(navBtn);
+    rightCol.appendChild(navGroup);
     rightCol.appendChild(moveGroup);
     rightCol.appendChild(delBtn);
 
@@ -2084,9 +2102,9 @@
       const res = await apiFetch(`/api/trips/${currentTripId}/itinerary-days/${currentItineraryDate}/cards`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ time: "", category: "景點", title: "", description: "", notes: "", durationValue: "", durationUnit: "hr" }),
+        body: JSON.stringify({ time: "", category: "景點", title: "", description: "", notes: "", durationValue: "", durationUnit: "hr", mapLink: "" }),
       });
-      const newCard = { id: res.id, time: "", category: "景點", title: "", description: "", notes: "", duration_value: "", duration_unit: "hr" };
+      const newCard = { id: res.id, time: "", category: "景點", title: "", description: "", notes: "", duration_value: "", duration_unit: "hr", map_link: "" };
       currentItineraryCards.push(newCard);
       const range = quillItinerary.getSelection(true) || { index: quillItinerary.getLength() };
       quillItinerary.insertEmbed(range.index, "itineraryCard", { id: newCard.id }, "user");
