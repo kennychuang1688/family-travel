@@ -262,13 +262,15 @@
     width: auto;
     text-align: left;
   }
-  #bookmark-btn, #bm-link-btn, #add-itinerary-card-btn {
+  #bookmark-btn, #bm-link-btn, #add-itinerary-card-btn, #itinerary-undo-btn, #itinerary-redo-btn {
     background: transparent; border: 1px solid var(--line); cursor: pointer; color: var(--paper);
     font-size: 12px; padding: 4px 10px; border-radius: 6px; white-space: nowrap;
     width: auto; height: auto; display: inline-flex; align-items: center; margin-left: 6px;
   }
   #add-itinerary-card-btn { font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif; }
-  #bookmark-btn:hover, #bm-link-btn:hover, #add-itinerary-card-btn:hover { color: var(--gold); border-color: var(--gold); }
+  #itinerary-undo-btn, #itinerary-redo-btn { font-size: 16px; padding: 4px 8px; }
+  #bookmark-btn:hover, #bm-link-btn:hover, #add-itinerary-card-btn:hover,
+  #itinerary-undo-btn:hover, #itinerary-redo-btn:hover { color: var(--gold); border-color: var(--gold); }
 
   /* 行程內文中的「書籤連結」樣式 */
   .ql-editor bm-mark { display: inline; }
@@ -1171,6 +1173,24 @@
       openBookmarkPicker(range);
     });
     toolbarEl.appendChild(bmLinkBtn);
+
+    // 加入復原/恢復復原按鈕:直接用 Quill 內建的 history 模組(平常按 Ctrl+Z 也是靠這個),
+    // 這裡只是額外提供按鈕,方便手機上沒有鍵盤快速鍵可以按的情況。
+    const undoBtn = document.createElement("button");
+    undoBtn.type = "button";
+    undoBtn.id = "itinerary-undo-btn";
+    undoBtn.textContent = "↶";
+    undoBtn.title = "復原上一步";
+    undoBtn.addEventListener("click", () => quillItinerary.history.undo());
+    toolbarEl.appendChild(undoBtn);
+
+    const redoBtn = document.createElement("button");
+    redoBtn.type = "button";
+    redoBtn.id = "itinerary-redo-btn";
+    redoBtn.textContent = "↷";
+    redoBtn.title = "恢復復原";
+    redoBtn.addEventListener("click", () => quillItinerary.history.redo());
+    toolbarEl.appendChild(redoBtn);
 
     // 加入「新增行程表格」按鈕:在目前游標位置插入一張結構化的行程卡片
     // (時間/類別/名稱/說明/備註),卡片本身存在獨立的 itinerary_cards 資料表裡,
