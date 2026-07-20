@@ -352,7 +352,7 @@
     border: 1px solid var(--line); border-radius: 8px; background: var(--bg-softer);
     color: var(--ink); padding: 7px 10px; width: 100%; font-family: "Iansui", "Noto Sans TC", sans-serif;
   }
-  .itinerary-card-title { font-size: 24px; font-weight: 700; }
+  .itinerary-card-title { font-size: 24px !important; font-weight: 700 !important; }
   .itinerary-card-desc {
     font-size: 14px; resize: none; overflow: hidden; min-height: 40px; line-height: 1.5;
   }
@@ -1776,7 +1776,7 @@
     ITINERARY_CARD_CATEGORIES.forEach((cat) => {
       const opt = document.createElement("option");
       opt.value = cat;
-      opt.textContent = cat;
+      opt.textContent = `${ITINERARY_CATEGORY_ICONS[cat] || ""} ${cat}`;
       if (cat === (card.category || "景點")) opt.selected = true;
       categorySelect.appendChild(opt);
     });
