@@ -341,18 +341,21 @@
   }
   .ql-editor .itinerary-card-embed { user-select: none; } /* 卡片外殼本身不可選取/編輯文字,裡面的輸入欄位仍可正常操作 */
   .itinerary-card-left { display: flex; flex-direction: column; gap: 8px; }
+  .itinerary-card-left-row { display: flex; align-items: center; gap: 6px; }
+  .itinerary-card-left-row .itinerary-card-icon { font-size: 16px; flex: none; line-height: 1; }
   .itinerary-card-left input, .itinerary-card-left select {
     padding: 7px 8px; border: 1px solid var(--line); border-radius: 8px;
-    background: var(--bg-softer); color: var(--ink); font-size: 13px; width: 100%;
+    background: var(--bg-softer); color: var(--ink); font-size: 13px; width: 100%; min-width: 0;
   }
   .itinerary-card-main { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
   .itinerary-card-main input, .itinerary-card-main textarea {
     border: 1px solid var(--line); border-radius: 8px; background: var(--bg-softer);
     color: var(--ink); padding: 7px 10px; width: 100%; font-family: "Iansui", "Noto Sans TC", sans-serif;
-    resize: vertical;
   }
-  .itinerary-card-title { font-size: 19px; font-weight: 600; }
-  .itinerary-card-desc { font-size: 14px; min-height: 40px; }
+  .itinerary-card-title { font-size: 24px; font-weight: 700; }
+  .itinerary-card-desc {
+    font-size: 14px; resize: none; overflow: hidden; min-height: 40px; line-height: 1.5;
+  }
   .itinerary-card-notes { font-size: 14px; }
   .itinerary-card-right { display: flex; flex-direction: column; justify-content: space-between; align-items: center; }
   .itinerary-card-right button {
@@ -1687,6 +1690,14 @@
 
   // ---------- 行程表格卡片(嵌入在每日行程內文中的結構化景點/交通/美食項目) ----------
   const ITINERARY_CARD_CATEGORIES = ["景點", "交通", "美食", "購物", "其它"];
+  // 每個類別對應的可愛小圖示(這裡特別挑選相容性較好的符號,避免跟之前一樣出現亂碼)
+  const ITINERARY_CATEGORY_ICONS = { "景點": "★", "交通": "✈", "美食": "☕", "購物": "❀", "其它": "✦" };
+  const ITINERARY_TIME_ICON = "⏰";
+
+  function autoResizeTextarea(el) {
+    el.style.height = "auto";
+    el.style.height = el.scrollHeight + "px";
+  }
 
   function scheduleCardSave(cardId) {
     clearTimeout(itineraryCardSaveTimers[cardId]);
@@ -1720,6 +1731,12 @@
     leftCol.className = "itinerary-card-left";
     leftCol.setAttribute("contenteditable", "false");
 
+    const timeRow = document.createElement("div");
+    timeRow.className = "itinerary-card-left-row";
+    const timeIcon = document.createElement("span");
+    timeIcon.className = "itinerary-card-icon";
+    timeIcon.textContent = ITINERARY_TIME_ICON;
+
     const timeInput = document.createElement("input");
     timeInput.type = "text";
     timeInput.className = "itinerary-card-time";
@@ -1746,6 +1763,14 @@
       card.time = formatted;
       scheduleCardSave(card.id);
     });
+    timeRow.appendChild(timeIcon);
+    timeRow.appendChild(timeInput);
+
+    const categoryRow = document.createElement("div");
+    categoryRow.className = "itinerary-card-left-row";
+    const categoryIcon = document.createElement("span");
+    categoryIcon.className = "itinerary-card-icon";
+    categoryIcon.textContent = ITINERARY_CATEGORY_ICONS[card.category || "景點"] || "★";
 
     const categorySelect = document.createElement("select");
     ITINERARY_CARD_CATEGORIES.forEach((cat) => {
@@ -1755,10 +1780,16 @@
       if (cat === (card.category || "景點")) opt.selected = true;
       categorySelect.appendChild(opt);
     });
-    categorySelect.addEventListener("change", () => { card.category = categorySelect.value; scheduleCardSave(card.id); });
+    categorySelect.addEventListener("change", () => {
+      card.category = categorySelect.value;
+      categoryIcon.textContent = ITINERARY_CATEGORY_ICONS[card.category] || "★";
+      scheduleCardSave(card.id);
+    });
+    categoryRow.appendChild(categoryIcon);
+    categoryRow.appendChild(categorySelect);
 
-    leftCol.appendChild(timeInput);
-    leftCol.appendChild(categorySelect);
+    leftCol.appendChild(timeRow);
+    leftCol.appendChild(categoryRow);
 
     // 中間:行程名稱 / 說明 / 備註
     const mainCol = document.createElement("div");
@@ -1775,9 +1806,13 @@
     const descInput = document.createElement("textarea");
     descInput.className = "itinerary-card-desc";
     descInput.placeholder = "行程說明";
-    descInput.rows = 2;
+    descInput.rows = 1;
     descInput.value = card.description || "";
-    descInput.addEventListener("input", () => { card.description = descInput.value; scheduleCardSave(card.id); });
+    descInput.addEventListener("input", () => {
+      card.description = descInput.value;
+      autoResizeTextarea(descInput);
+      scheduleCardSave(card.id);
+    });
 
     const notesInput = document.createElement("input");
     notesInput.type = "text";
@@ -1835,6 +1870,7 @@
     node.appendChild(mainCol);
     node.appendChild(rightCol);
     node.dataset.hydrated = "true";
+    autoResizeTextarea(descInput); // 卡片已經掛到畫面上,現在量出來的高度才準確,讓多行說明一開始就完整顯示
   }
 
   // 讓內文中每一個「行程表格」的嵌入空殼都填上實際內容;
