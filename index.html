@@ -2,7 +2,12 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="家族旅遊行程" />
+<meta name="theme-color" content="#e3a23d" />
 <title>家族旅遊行程</title>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.snow.min.css" rel="stylesheet" />
@@ -420,6 +425,21 @@
     padding: 6px 14px; border-radius: 20px; cursor: pointer; font-size: 12px; white-space: nowrap;
   }
   .sort-buttons .sort-btn.active { background: var(--gold); color: #201404; border-color: var(--gold); font-weight: 600; }
+
+  /* ---- 手機瀏覽優化(讓整體介面更貼近手機螢幕,操作起來更像一般 App) ---- */
+  @media (max-width: 480px) {
+    header { padding: 12px 14px; gap: 8px; }
+    .brand .mark { font-size: 20px; }
+    main { padding: 16px 12px 60px; }
+    .panel { padding: 14px; border-radius: 14px; margin-bottom: 16px; }
+    nav { gap: 4px; flex-wrap: wrap; }
+    nav button { padding: 7px 12px; font-size: 12px; }
+    #user-box span { display: none; } /* 手機版空間有限,只留頭像和登出鈕,姓名文字先隱藏 */
+    .day-tabs .day-tab, .day-tab { padding: 6px 12px; font-size: 12px; }
+    .form-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+    table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; white-space: nowrap; }
+    .itinerary-card, .itinerary-card-embed { padding: 12px; gap: 8px; }
+  }
 </style>
 </head>
 <body>
@@ -1314,9 +1334,34 @@
   }
 
   function initGoogleSignIn() {
-    google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: handleCredentialResponse });
+    google.accounts.id.initialize({
+      client_id: GOOGLE_CLIENT_ID,
+      callback: handleCredentialResponse,
+      ux_mode: "popup",           // 明確指定用彈出視窗,而不是讓瀏覽器自行決定(手機上某些瀏覽器預設行為不穩定)
+      use_fedcm_for_fap: false,
+      use_fedcm_for_prompt: true, // 因應瀏覽器逐步淘汰第三方 cookie,改用新的 FedCM 機制,手機上相容性更好
+      itp_support: true,         // 加強 Safari(iPhone 常用瀏覽器)的相容性
+    });
     google.accounts.id.renderButton(document.getElementById("g_id_signin"), { theme: "outline", size: "large", text: "signin_with" });
     initQuillItinerary();
+    checkInAppBrowserWarning();
+  }
+
+  // 偵測是否在 LINE / Messenger / Instagram 等 App 內建瀏覽器(webview)開啟。
+  // Google 從 2021 年起基於安全考量,直接封鎖這類內嵌瀏覽器的登入,不管網站怎麼寫都無法正常登入,
+  // 只能請使用者改用手機本身的 Safari / Chrome 開啟。這種情況下畫面上會提示使用者,而不是默默失敗。
+  function checkInAppBrowserWarning() {
+    const ua = navigator.userAgent || "";
+    const isEmbeddedWebview = /FBAN|FBAV|Instagram|Line\/|MicroMessenger|; wv\)/i.test(ua);
+    if (!isEmbeddedWebview) return;
+    const warningEl = document.createElement("div");
+    warningEl.style.cssText =
+      "background:#fdecea; border:1px solid #e3a23d; color:#7a3b1f; padding:12px 16px; " +
+      "border-radius:10px; font-size:13px; margin-bottom:16px; line-height:1.6;";
+    warningEl.textContent =
+      "偵測到你目前是透過 LINE / Instagram / Messenger 等 App 內建的瀏覽器開啟這個網站,Google 登入在這類瀏覽器裡會被系統封鎖、無法正常運作。請點右上角選單選擇「用瀏覽器開啟」(或複製連結貼到 Safari / Chrome 開啟)才能順利登入。";
+    const gateEl = document.getElementById("gate");
+    if (gateEl) gateEl.insertBefore(warningEl, gateEl.firstChild);
   }
   window.onload = initGoogleSignIn;
 
