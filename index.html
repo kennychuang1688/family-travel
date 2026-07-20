@@ -404,7 +404,15 @@
     line-height: 1.9;
   }
   #itinerary-editor .ql-editor.ql-blank::before { color: rgba(59,42,33,0.35); font-style: normal; }
-  #itinerary-editor .ql-editor img { max-width: 100%; border-radius: 8px; margin: 8px 0; }
+  #itinerary-editor .ql-editor img { max-width: 100%; border-radius: 8px; margin: 8px 0; cursor: pointer; }
+  #itinerary-editor .ql-editor img.itinerary-image-selected {
+    outline: 2px solid var(--gold); outline-offset: 2px;
+  }
+  #itinerary-image-resize-handle {
+    display: none; position: fixed; width: 16px; height: 16px; z-index: 500;
+    background: var(--gold); border: 2px solid #fff; border-radius: 50%;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.3); cursor: nwse-resize;
+  }
   #itinerary-editor .ql-editor a { color: var(--gold); text-decoration: underline; cursor: pointer; }
   #itinerary-editor .ql-editor ul,
   #itinerary-editor .ql-editor ol { padding-left: 0; }
@@ -1216,6 +1224,93 @@
     quillItinerary.on("text-change", (delta, oldDelta, source) => {
       if (source === "user") scheduleAutoSave();
       if (!suppressCardHydration) hydrateItineraryCardEmbeds(); // 確保任何新出現的行程表格空殼都被填上實際內容
+    });
+
+    initItineraryImageResize();
+  }
+
+  // ---------- 行程內文裡插入的圖片:編輯模式下可以點選圖片、拖曳右下角控點自由放大縮小 ----------
+  function initItineraryImageResize() {
+    const handle = document.createElement("div");
+    handle.id = "itinerary-image-resize-handle";
+    document.body.appendChild(handle);
+
+    let selectedImg = null;
+    let dragging = false;
+    let dragStartX = 0;
+    let dragStartWidth = 0;
+
+    function positionHandle() {
+      if (!selectedImg) return;
+      const rect = selectedImg.getBoundingClientRect();
+      handle.style.left = rect.right - 9 + "px";
+      handle.style.top = rect.bottom - 9 + "px";
+      handle.style.display = "block";
+    }
+
+    function selectImage(img) {
+      if (selectedImg) selectedImg.classList.remove("itinerary-image-selected");
+      selectedImg = img;
+      if (selectedImg) {
+        selectedImg.classList.add("itinerary-image-selected");
+        positionHandle();
+      } else {
+        handle.style.display = "none";
+      }
+    }
+
+    quillItinerary.root.addEventListener("click", (e) => {
+      if (itineraryDayMode !== "edit") return;
+      if (e.target.tagName === "IMG") {
+        selectImage(e.target);
+      } else {
+        selectImage(null);
+      }
+    });
+
+    // 使用者捲動、切換分頁、或視窗大小改變時,控點要跟著圖片重新定位,否則位置會偏掉
+    window.addEventListener("scroll", () => { if (selectedImg) positionHandle(); }, true);
+    window.addEventListener("resize", () => { if (selectedImg) positionHandle(); });
+
+    function startDrag(clientX) {
+      if (!selectedImg) return;
+      dragging = true;
+      dragStartX = clientX;
+      dragStartWidth = selectedImg.getBoundingClientRect().width;
+      document.body.style.userSelect = "none";
+    }
+
+    function moveDrag(clientX) {
+      if (!dragging || !selectedImg) return;
+      const delta = clientX - dragStartX;
+      // 最小 60px,避免拖到消失不見;最大不超過編輯區寬度,避免圖片跑到外面去
+      const maxWidth = quillItinerary.root.clientWidth;
+      const newWidth = Math.min(maxWidth, Math.max(60, dragStartWidth + delta));
+      selectedImg.style.width = newWidth + "px";
+      selectedImg.style.height = "auto"; // 高度自動依比例縮放,不會變形
+      positionHandle();
+    }
+
+    function endDrag() {
+      if (!dragging) return;
+      dragging = false;
+      document.body.style.userSelect = "";
+      scheduleAutoSave(); // 存下調整後的尺寸
+    }
+
+    handle.addEventListener("mousedown", (e) => { e.preventDefault(); startDrag(e.clientX); });
+    document.addEventListener("mousemove", (e) => moveDrag(e.clientX));
+    document.addEventListener("mouseup", endDrag);
+
+    handle.addEventListener("touchstart", (e) => { startDrag(e.touches[0].clientX); }, { passive: true });
+    document.addEventListener("touchmove", (e) => { if (dragging) moveDrag(e.touches[0].clientX); }, { passive: true });
+    document.addEventListener("touchend", endDrag);
+
+    // 切換預覽模式、切換分頁、或點擊其他地方時,取消選取、隱藏控點
+    document.addEventListener("click", (e) => {
+      if (e.target === handle) return;
+      if (e.target.tagName === "IMG" && quillItinerary.root.contains(e.target)) return;
+      selectImage(null);
     });
   }
 
@@ -2182,6 +2277,15 @@
     if (quillItinerary) quillItinerary.enable(isEdit);
 
     applyItineraryCardEditability(); // 用目前的預覽/編輯模式,重新套用內文中行程表格卡片是否可編輯
+
+    if (!isEdit) {
+      // 切到預覽模式,取消圖片的選取狀態、隱藏調整尺寸的控點
+      const resizeHandle = document.getElementById("itinerary-image-resize-handle");
+      if (resizeHandle) resizeHandle.style.display = "none";
+      document.querySelectorAll("#itinerary-editor .itinerary-image-selected").forEach((img) => {
+        img.classList.remove("itinerary-image-selected");
+      });
+    }
 
     // 更新目前作用中那個日期分頁按鈕的文字,加上 (預)/(編) 後綴;其他分頁維持原本文字
     document.querySelectorAll("#itinerary-day-tabs .day-tab").forEach((b) => {
