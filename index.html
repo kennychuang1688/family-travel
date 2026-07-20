@@ -366,6 +366,8 @@
   }
   .itinerary-card-right button:hover { background: var(--bg-softer); }
   .itinerary-card-right .itinerary-card-delete-btn { color: #b5473b; }
+  .itinerary-card-move-group { display: flex; flex-direction: column; gap: 2px; }
+  .itinerary-card-move-btn { font-size: 13px !important; padding: 2px !important; }
   .itinerary-card input:disabled, .itinerary-card select:disabled, .itinerary-card textarea:disabled,
   .itinerary-card-embed input:disabled, .itinerary-card-embed select:disabled, .itinerary-card-embed textarea:disabled {
     background: transparent; border-color: transparent; opacity: 0.85; cursor: default;
@@ -374,6 +376,7 @@
     .itinerary-card, .itinerary-card-embed { grid-template-columns: 1fr; }
     .itinerary-card-left { flex-direction: row; }
     .itinerary-card-right { flex-direction: row; justify-content: flex-end; gap: 10px; }
+    .itinerary-card-move-group { flex-direction: row; }
   }
 
   #itinerary-editor.ql-container.ql-snow {
@@ -1724,6 +1727,28 @@
     }
   }
 
+  // 把一張卡片的嵌入位置,跟內文中緊鄰的上一個/下一個區塊(段落、圖片、或另一張卡片)互換順序
+  function moveItineraryCardEmbed(node, direction) {
+    const blot = Quill.find(node);
+    if (!blot) return;
+    const targetBlot = direction === "up" ? blot.prev : blot.next;
+    if (!targetBlot) return; // 已經在最上面/最下面了,不能再移動
+
+    const cardId = node.getAttribute("data-card-id");
+    const blotIndex = quillItinerary.getIndex(blot);
+    const blotLength = blot.length();
+    const targetIndex = quillItinerary.getIndex(targetBlot);
+    const targetLength = targetBlot.length();
+
+    quillItinerary.deleteText(blotIndex, blotLength, "user");
+    const insertAt = direction === "up" ? targetIndex : targetIndex + targetLength - blotLength;
+    quillItinerary.insertEmbed(insertAt, "itineraryCard", { id: cardId }, "user");
+    quillItinerary.setSelection(insertAt + 1, 0, "silent");
+
+    hydrateItineraryCardEmbeds(); // 剛插入的是全新的空殼節點,重新掛上互動內容
+    scheduleAutoSave();
+  }
+
   // 把一張卡片的實際內容(時間/類別/名稱/說明/備註/導航/刪除)填進一個已經存在的嵌入節點裡。
   // 節點本身(帶 data-card-id 的空殼 div)是由 Quill 的自訂 blot 建立的,這裡只負責把裡面的畫面補齊。
   function populateItineraryCardNode(node, card) {
@@ -1882,6 +1907,20 @@
       window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`, "_blank");
     });
 
+    const upBtn = document.createElement("button");
+    upBtn.type = "button";
+    upBtn.className = "itinerary-card-move-btn";
+    upBtn.title = "把這張卡片往上移動一格";
+    upBtn.textContent = "▲";
+    upBtn.addEventListener("click", () => moveItineraryCardEmbed(node, "up"));
+
+    const downBtn = document.createElement("button");
+    downBtn.type = "button";
+    downBtn.className = "itinerary-card-move-btn";
+    downBtn.title = "把這張卡片往下移動一格";
+    downBtn.textContent = "▼";
+    downBtn.addEventListener("click", () => moveItineraryCardEmbed(node, "down"));
+
     const delBtn = document.createElement("button");
     delBtn.type = "button";
     delBtn.className = "itinerary-card-delete-btn";
@@ -1905,7 +1944,13 @@
       }
     });
 
+    const moveGroup = document.createElement("div");
+    moveGroup.className = "itinerary-card-move-group";
+    moveGroup.appendChild(upBtn);
+    moveGroup.appendChild(downBtn);
+
     rightCol.appendChild(navBtn);
+    rightCol.appendChild(moveGroup);
     rightCol.appendChild(delBtn);
 
     node.appendChild(leftCol);
@@ -1955,8 +2000,8 @@
     const isEdit = itineraryDayMode === "edit";
     document.querySelectorAll("#itinerary-editor .itinerary-card-embed input, #itinerary-editor .itinerary-card-embed select, #itinerary-editor .itinerary-card-embed textarea")
       .forEach((el) => { el.disabled = !isEdit; });
-    document.querySelectorAll("#itinerary-editor .itinerary-card-embed .itinerary-card-delete-btn")
-      .forEach((btn) => { btn.style.display = isEdit ? "" : "none"; });
+    document.querySelectorAll("#itinerary-editor .itinerary-card-embed .itinerary-card-delete-btn, #itinerary-editor .itinerary-card-embed .itinerary-card-move-group")
+      .forEach((el) => { el.style.display = isEdit ? "" : "none"; });
   }
 
   async function loadItineraryCards(date) {
