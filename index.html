@@ -945,6 +945,7 @@
   let currentTripTitle = "";
   let currentItineraryCards = []; // 目前這一天的「行程表格」卡片清單
   let itineraryCardSaveTimers = {};
+  let suppressCardHydration = false; // 執行「移動/刪除卡片」這種一次要動好幾步 Quill 內容的操作時,暫時關閉自動補齊,避免中途觸發的 text-change 誤判成「內容不見了,自動補一份」而造成重複或殘影
 
   // ---------- 自訂 Quill 格式:書籤標記 / 書籤連結 ----------
   // (一定要在 new Quill(...) 之前註冊,否則 Quill 不認得這個格式,
@@ -1187,7 +1188,7 @@
 
     quillItinerary.on("text-change", (delta, oldDelta, source) => {
       if (source === "user") scheduleAutoSave();
-      hydrateItineraryCardEmbeds(); // 確保任何新出現的行程表格空殼都被填上實際內容
+      if (!suppressCardHydration) hydrateItineraryCardEmbeds(); // 確保任何新出現的行程表格空殼都被填上實際內容
     });
   }
 
@@ -1740,12 +1741,14 @@
     const targetIndex = quillItinerary.getIndex(targetBlot);
     const targetLength = targetBlot.length();
 
+    suppressCardHydration = true;
     quillItinerary.deleteText(blotIndex, blotLength, "user");
     const insertAt = direction === "up" ? targetIndex : targetIndex + targetLength - blotLength;
     quillItinerary.insertEmbed(insertAt, "itineraryCard", { id: cardId }, "user");
     quillItinerary.setSelection(insertAt + 1, 0, "silent");
+    suppressCardHydration = false;
 
-    hydrateItineraryCardEmbeds(); // 剛插入的是全新的空殼節點,重新掛上互動內容
+    hydrateItineraryCardEmbeds(); // 手動再跑一次,確保新插入的空殼被正確填上內容
     scheduleAutoSave();
   }
 
@@ -1931,6 +1934,7 @@
       try {
         await apiFetch(`/api/itinerary-cards/${card.id}`, { method: "DELETE" });
         currentItineraryCards = currentItineraryCards.filter((c) => c.id !== card.id);
+        suppressCardHydration = true;
         const blot = Quill.find(node);
         if (blot) {
           const index = quillItinerary.getIndex(blot);
@@ -1938,6 +1942,8 @@
         } else {
           node.remove();
         }
+        suppressCardHydration = false;
+        hydrateItineraryCardEmbeds();
         scheduleAutoSave();
       } catch (err) {
         alert("刪除失敗:" + err.message);
@@ -1966,14 +1972,25 @@
     if (!quillItinerary) return;
     const root = quillItinerary.root;
 
-    // 第一輪:把目前內文中已經有空殼的卡片填上內容
+    // 第一輪:把目前內文中已經有空殼的卡片填上內容;如果空殼對應的卡片已經不存在了(例如
+    // 剛好在別的操作過程中被刪除),順便把這個殘留的空殼清掉,避免留下看不出內容的白色空框
     const existingIds = new Set();
     Array.from(root.querySelectorAll(".itinerary-card-embed[data-card-id]")).forEach((node) => {
       const id = node.getAttribute("data-card-id");
+      const card = currentItineraryCards.find((c) => c.id === id);
+      if (!card) {
+        const staleBlot = Quill.find(node);
+        if (staleBlot) {
+          const staleIndex = quillItinerary.getIndex(staleBlot);
+          quillItinerary.deleteText(staleIndex, staleBlot.length(), "silent");
+        } else {
+          node.remove();
+        }
+        return;
+      }
       existingIds.add(id);
       if (node._hydrated) return; // 已經是活的,不要重建,避免打斷正在輸入的游標
-      const card = currentItineraryCards.find((c) => c.id === id);
-      if (card) populateItineraryCardNode(node, card);
+      populateItineraryCardNode(node, card);
     });
 
     // 第二輪:資料庫裡有、但內文中還沒有對應嵌入位置的卡片(例如舊資料),自動補插到內文最後面
