@@ -1418,15 +1418,21 @@
 
   async function handleItineraryImageInsert() {
     if (!currentTripId) { alert("請先開啟一個行程"); return; }
+    // 一定要在跳出檔案選擇視窗之前,先把目前游標位置記下來——
+    // 檔案視窗開了又關之後,Quill 的選取狀態常常會不見或被重置成最後面,
+    // 如果等檔案選好了才去問「游標在哪裡」,答案幾乎都會變成「文件最後面」,
+    // 這正是「插入圖片永遠跑到最下方」的原因。
+    const range = quillItinerary.getSelection(true) || { index: quillItinerary.getLength() };
+    const insertIndex = range.index;
+
     const input = document.createElement("input");
     input.type = "file";
     input.accept = "image/*";
     input.onchange = async () => {
       const file = input.files[0];
       if (!file) return;
-      const range = quillItinerary.getSelection(true);
       try {
-        await uploadAndInsertItineraryImage(file, range.index);
+        await uploadAndInsertItineraryImage(file, insertIndex);
       } catch (err) {
         alert("圖片上傳失敗:" + err.message);
       }
@@ -2225,7 +2231,13 @@
       currentItineraryCards.push(newCard);
       const range = quillItinerary.getSelection(true) || { index: quillItinerary.getLength() };
       quillItinerary.insertEmbed(range.index, "itineraryCard", { id: newCard.id }, "user");
-      quillItinerary.setSelection(range.index + 1, 0, "silent");
+      // 確保卡片後面一定有一行可以點擊、打字的空白行,不然卡片跟卡片(或跟下一段內容)
+      // 中間會完全沒有縫隙可以插入文字或圖片
+      const afterIndex = range.index + 1;
+      if (quillItinerary.getText(afterIndex, 1) !== "\n") {
+        quillItinerary.insertText(afterIndex, "\n", "user");
+      }
+      quillItinerary.setSelection(afterIndex, 0, "silent");
       hydrateItineraryCardEmbeds();
       scheduleAutoSave();
     } catch (err) {
