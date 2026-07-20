@@ -1752,6 +1752,13 @@
     el.style.height = el.scrollHeight + "px";
   }
 
+  // 行程表格卡片裡的輸入欄位是包在 Quill 的內文區域裡的。Quill 本身在內文區域上
+  // 綁了自己的貼上(paste)處理邏輯,如果不擋住事件往上傳遞,直接對著卡片裡的欄位貼上文字時,
+  // 內容會被 Quill 攔截、貼到下面自由編輯區裡,而不是貼進使用者實際點著的那個欄位。
+  function stopPasteBubble(el) {
+    el.addEventListener("paste", (e) => e.stopPropagation());
+  }
+
   function scheduleCardSave(cardId) {
     clearTimeout(itineraryCardSaveTimers[cardId]);
     itineraryCardSaveTimers[cardId] = setTimeout(() => saveItineraryCard(cardId), 800);
@@ -1823,6 +1830,7 @@
     timeInput.maxLength = 5;
     timeInput.inputMode = "numeric";
     timeInput.value = card.time || "";
+    stopPasteBubble(timeInput);
     timeInput.addEventListener("input", () => {
       // 只保留數字,自動在第 2、3 碼中間補上冒號(例如打 0830 會自動變成 08:30)
       let digits = timeInput.value.replace(/\D/g, "").slice(0, 4);
@@ -1852,6 +1860,7 @@
     categoryIcon.textContent = ITINERARY_CATEGORY_ICONS[card.category || "景點"] || "★";
 
     const categorySelect = document.createElement("select");
+    stopPasteBubble(categorySelect);
     ITINERARY_CARD_CATEGORIES.forEach((cat) => {
       const opt = document.createElement("option");
       opt.value = cat;
@@ -1880,6 +1889,7 @@
     durationInput.className = "itinerary-card-duration-value";
     durationInput.placeholder = "停留";
     durationInput.value = card.duration_value || "";
+    stopPasteBubble(durationInput);
     durationInput.addEventListener("input", () => {
       // 只保留數字(可以有小數點,例如 1.5 小時)
       durationInput.value = durationInput.value.replace(/[^\d.]/g, "");
@@ -1889,6 +1899,7 @@
 
     const durationUnitSelect = document.createElement("select");
     durationUnitSelect.className = "itinerary-card-duration-unit";
+    stopPasteBubble(durationUnitSelect);
     [["hr", "hr"], ["min", "min"]].forEach(([value, label]) => {
       const opt = document.createElement("option");
       opt.value = value;
@@ -1919,6 +1930,7 @@
     titleInput.className = "itinerary-card-title";
     titleInput.placeholder = "行程名稱";
     titleInput.value = card.title || "";
+    stopPasteBubble(titleInput);
     titleInput.addEventListener("input", () => { card.title = titleInput.value; scheduleCardSave(card.id); });
 
     const descInput = document.createElement("textarea");
@@ -1926,6 +1938,7 @@
     descInput.placeholder = "行程說明";
     descInput.rows = 1;
     descInput.value = card.description || "";
+    stopPasteBubble(descInput);
     descInput.addEventListener("input", () => {
       card.description = descInput.value;
       autoResizeTextarea(descInput);
@@ -1937,6 +1950,7 @@
     notesInput.className = "itinerary-card-notes";
     notesInput.placeholder = "備註";
     notesInput.value = card.notes || "";
+    stopPasteBubble(notesInput);
     notesInput.addEventListener("input", () => { card.notes = notesInput.value; scheduleCardSave(card.id); });
 
     mainCol.appendChild(titleInput);
