@@ -372,6 +372,7 @@
   .itinerary-card-right button:hover { background: var(--bg-softer); }
   .itinerary-card-right .itinerary-card-delete-btn { color: #b5473b; }
   .itinerary-card-move-group { display: flex; flex-direction: column; gap: 2px; }
+  .itinerary-card-nav-group { display: flex; flex-direction: column; gap: 2px; }
   .itinerary-card-move-btn { font-size: 13px !important; padding: 2px !important; }
   .itinerary-card input:disabled, .itinerary-card select:disabled, .itinerary-card textarea:disabled,
   .itinerary-card-embed input:disabled, .itinerary-card-embed select:disabled, .itinerary-card-embed textarea:disabled {
@@ -382,7 +383,7 @@
     .itinerary-card-left { flex-direction: column; }
     .itinerary-card-left-row { width: 100%; }
     .itinerary-card-right { flex-direction: row; justify-content: flex-end; gap: 10px; }
-    .itinerary-card-move-group { flex-direction: row; }
+    .itinerary-card-move-group, .itinerary-card-nav-group { flex-direction: row; }
   }
 
   #itinerary-editor.ql-container.ql-snow {
@@ -2010,7 +2011,7 @@
     });
 
     const navGroup = document.createElement("div");
-    navGroup.className = "itinerary-card-move-group";
+    navGroup.className = "itinerary-card-nav-group";
     navGroup.appendChild(navBtn);
     navGroup.appendChild(editLinkBtn);
 
@@ -2081,7 +2082,7 @@
     const isEdit = itineraryDayMode === "edit";
     document.querySelectorAll("#itinerary-editor .itinerary-card-embed input, #itinerary-editor .itinerary-card-embed select, #itinerary-editor .itinerary-card-embed textarea")
       .forEach((el) => { el.disabled = !isEdit; });
-    document.querySelectorAll("#itinerary-editor .itinerary-card-embed .itinerary-card-delete-btn, #itinerary-editor .itinerary-card-embed .itinerary-card-move-group")
+    document.querySelectorAll("#itinerary-editor .itinerary-card-embed .itinerary-card-delete-btn, #itinerary-editor .itinerary-card-embed .itinerary-card-move-group, #itinerary-editor .itinerary-card-embed .itinerary-card-edit-link-btn")
       .forEach((el) => { el.style.display = isEdit ? "" : "none"; });
   }
 
