@@ -343,6 +343,8 @@
   .itinerary-card-left { display: flex; flex-direction: column; gap: 8px; }
   .itinerary-card-left-row { display: flex; align-items: center; gap: 6px; }
   .itinerary-card-left-row .itinerary-card-icon { font-size: 16px; flex: none; line-height: 1; }
+  .itinerary-card-duration-value { flex: 1 1 auto; min-width: 0; padding-left: 6px !important; padding-right: 4px !important; }
+  .itinerary-card-duration-unit { flex: 0 0 auto; width: auto !important; padding-left: 4px !important; padding-right: 4px !important; }
   .itinerary-card-left input, .itinerary-card-left select {
     padding: 7px 8px; border: 1px solid var(--line); border-radius: 8px;
     background: var(--bg-softer); color: var(--ink); font-size: 13px; width: 100%; min-width: 0;
@@ -1714,6 +1716,7 @@
         body: JSON.stringify({
           time: card.time, category: card.category, title: card.title,
           description: card.description, notes: card.notes,
+          durationValue: card.durationValue, durationUnit: card.durationUnit,
         }),
       });
     } catch (err) {
@@ -1788,8 +1791,47 @@
     categoryRow.appendChild(categoryIcon);
     categoryRow.appendChild(categorySelect);
 
+    // 停留時間:數值輸入 + 單位(小時/分鐘)
+    const durationRow = document.createElement("div");
+    durationRow.className = "itinerary-card-left-row";
+    const durationIcon = document.createElement("span");
+    durationIcon.className = "itinerary-card-icon";
+    durationIcon.textContent = "⏳";
+
+    const durationInput = document.createElement("input");
+    durationInput.type = "text";
+    durationInput.inputMode = "numeric";
+    durationInput.className = "itinerary-card-duration-value";
+    durationInput.placeholder = "停留";
+    durationInput.value = card.duration_value || "";
+    durationInput.addEventListener("input", () => {
+      // 只保留數字(可以有小數點,例如 1.5 小時)
+      durationInput.value = durationInput.value.replace(/[^\d.]/g, "");
+      card.duration_value = durationInput.value;
+      scheduleCardSave(card.id);
+    });
+
+    const durationUnitSelect = document.createElement("select");
+    durationUnitSelect.className = "itinerary-card-duration-unit";
+    [["hr", "hr"], ["min", "min"]].forEach(([value, label]) => {
+      const opt = document.createElement("option");
+      opt.value = value;
+      opt.textContent = label;
+      if (value === (card.duration_unit || "hr")) opt.selected = true;
+      durationUnitSelect.appendChild(opt);
+    });
+    durationUnitSelect.addEventListener("change", () => {
+      card.duration_unit = durationUnitSelect.value;
+      scheduleCardSave(card.id);
+    });
+
+    durationRow.appendChild(durationIcon);
+    durationRow.appendChild(durationInput);
+    durationRow.appendChild(durationUnitSelect);
+
     leftCol.appendChild(timeRow);
     leftCol.appendChild(categoryRow);
+    leftCol.appendChild(durationRow);
 
     // 中間:行程名稱 / 說明 / 備註
     const mainCol = document.createElement("div");
@@ -1934,9 +1976,9 @@
       const res = await apiFetch(`/api/trips/${currentTripId}/itinerary-days/${currentItineraryDate}/cards`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ time: "", category: "景點", title: "", description: "", notes: "" }),
+        body: JSON.stringify({ time: "", category: "景點", title: "", description: "", notes: "", durationValue: "", durationUnit: "hr" }),
       });
-      const newCard = { id: res.id, time: "", category: "景點", title: "", description: "", notes: "" };
+      const newCard = { id: res.id, time: "", category: "景點", title: "", description: "", notes: "", duration_value: "", duration_unit: "hr" };
       currentItineraryCards.push(newCard);
       const range = quillItinerary.getSelection(true) || { index: quillItinerary.getLength() };
       quillItinerary.insertEmbed(range.index, "itineraryCard", { id: newCard.id }, "user");
