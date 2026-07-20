@@ -1308,11 +1308,10 @@
       } catch (e) { /* 設定失敗也不影響圖片插入,只是顯示穩定度可能較差 */ }
     }
 
-    // 優先用檔案 id 直接組出 Drive 縮圖網址,這個格式很穩定,
-    // 不會像 thumbnailLink 那樣偶爾在檔案剛上傳完的瞬間還沒準備好;
-    // webContentLink 是設計給「下載」用的,不一定能直接當 <img> 顯示,所以放最後備援。
+    // 優先用檔案 id 組出我們自己 Worker 的圖片代理網址——不依賴瀏覽器當下對 drive.google.com
+    // 有沒有登入 session,所以不同瀏覽器(尤其是 Safari)都能穩定顯示,不會忽然變成破圖示。
     let imgUrl = driveFile.id
-      ? `https://drive.google.com/thumbnail?id=${driveFile.id}&sz=w1600`
+      ? `${WORKER_URL}/api/itinerary-image/${driveFile.id}?size=1600`
       : (driveFile.thumbnailLink || driveFile.webContentLink);
     if (!imgUrl) {
       alert("圖片已上傳,但沒有取得可用的圖片網址,請重新整理頁面後再試一次。");
@@ -2052,13 +2051,33 @@
 
   // 讓內文中每一個「行程表格」的嵌入空殼都填上實際內容;
   // 同時把資料庫裡有、但內文中還沒有對應嵌入位置的卡片(例如舊資料)自動補插到內文最後面,避免不見。
+  // 把之前存下來、直接指向 drive.google.com 的舊圖片網址,改寫成我們自己 Worker 的圖片代理網址。
+  // 舊網址依賴瀏覽器當下對 drive.google.com 的登入 session,在 Safari 等瀏覽器上常常顯示不出來
+  // (變成破圖示);改用代理網址後,不管什麼瀏覽器都是穩定地由 Worker 代為抓取圖片內容。
+  function migrateLegacyDriveImageUrls() {
+    if (!quillItinerary) return;
+    const imgs = quillItinerary.root.querySelectorAll('img[src*="drive.google.com"]');
+    if (imgs.length === 0) return;
+    imgs.forEach((img) => {
+      const match = img.src.match(/[?&]id=([^&]+)/);
+      if (!match) return;
+      const fileId = match[1];
+      img.src = `${WORKER_URL}/api/itinerary-image/${fileId}?size=1600`;
+    });
+    scheduleAutoSave(); // 把改寫後的網址存回去,以後就不用每次載入都重新改寫一次
+  }
+
   function hydrateItineraryCardEmbeds() {
     if (!quillItinerary) return;
     const root = quillItinerary.root;
 
-    // 第一輪:把目前內文中已經有空殼的卡片填上內容;如果空殼對應的卡片已經不存在了(例如
-    // 剛好在別的操作過程中被刪除),順便把這個殘留的空殼清掉,避免留下看不出內容的白色空框
-    const existingIds = new Set();
+    // 把目前內文中已經有空殼的卡片填上內容;如果空殼對應的卡片已經不存在了(例如
+    // 剛好在別的操作過程中被刪除),順便把這個殘留的空殼清掉,避免留下看不出內容的白色空框。
+    //
+    // 注意:這裡故意「不」自動把資料庫裡找不到對應嵌入位置的卡片補插到內文最後面——
+    // 之前這個自動補插的機制在少數瀏覽器(例如手機版 Safari)上,偶爾會因為畫面還沒
+    // 完全渲染完成就先掃描一次,誤判某張卡片「不見了」,結果把它搬到最後面、順序整個亂掉。
+    // 拿掉這個自動搬移機制後,卡片的順序就只會依照使用者實際編輯、上下移動的結果為準。
     Array.from(root.querySelectorAll(".itinerary-card-embed[data-card-id]")).forEach((node) => {
       const id = node.getAttribute("data-card-id");
       const card = currentItineraryCards.find((c) => c.id === id);
@@ -2072,26 +2091,9 @@
         }
         return;
       }
-      existingIds.add(id);
       if (node._hydrated) return; // 已經是活的,不要重建,避免打斷正在輸入的游標
       populateItineraryCardNode(node, card);
     });
-
-    // 第二輪:資料庫裡有、但內文中還沒有對應嵌入位置的卡片(例如舊資料),自動補插到內文最後面
-    const missing = currentItineraryCards.filter((card) => !existingIds.has(card.id));
-    missing.forEach((card) => {
-      const insertIndex = Math.max(0, quillItinerary.getLength() - 1);
-      quillItinerary.insertEmbed(insertIndex, "itineraryCard", { id: card.id }, "silent");
-    });
-    if (missing.length > 0) {
-      Array.from(root.querySelectorAll(".itinerary-card-embed[data-card-id]")).forEach((node) => {
-        if (node._hydrated) return;
-        const id = node.getAttribute("data-card-id");
-        const card = currentItineraryCards.find((c) => c.id === id);
-        if (card) populateItineraryCardNode(node, card);
-      });
-      scheduleAutoSave(); // 把搬移結果存回去,避免每次切換這一天都要重新搬移一次
-    }
 
     applyItineraryCardEditability();
   }
@@ -2211,6 +2213,7 @@
       const content = itineraryDayContents[date] || "";
       if (content && content.includes("<")) {
         quillItinerary.root.innerHTML = content;
+        migrateLegacyDriveImageUrls();
       } else {
         quillItinerary.setText(content || "");
       }
