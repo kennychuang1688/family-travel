@@ -2129,6 +2129,25 @@
       }
     });
 
+    const insertAfterBtn = document.createElement("button");
+    insertAfterBtn.type = "button";
+    insertAfterBtn.className = "itinerary-card-insert-after-btn";
+    insertAfterBtn.title = "在這張卡片後面插入一行,方便接著打字或插入圖片";
+    insertAfterBtn.textContent = "⏎";
+    insertAfterBtn.addEventListener("click", () => {
+      const blot = Quill.find(node);
+      if (!blot) return;
+      const index = quillItinerary.getIndex(blot);
+      const afterIndex = index + blot.length();
+      // 卡片是一個完整的區塊,滑鼠很難精準點在它正前方/正後方來放游標,
+      // 所以直接用按鈕明確地在後面插入一行空白,並把游標移過去,一定會成功。
+      if (quillItinerary.getText(afterIndex, 1) !== "\n") {
+        quillItinerary.insertText(afterIndex, "\n", "user");
+      }
+      quillItinerary.setSelection(afterIndex, 0, "user");
+      quillItinerary.focus();
+    });
+
     const navGroup = document.createElement("div");
     navGroup.className = "itinerary-card-nav-group";
     navGroup.appendChild(navBtn);
@@ -2140,6 +2159,7 @@
     moveGroup.appendChild(downBtn);
 
     rightCol.appendChild(navGroup);
+    rightCol.appendChild(insertAfterBtn);
     rightCol.appendChild(moveGroup);
     rightCol.appendChild(delBtn);
 
@@ -2204,7 +2224,7 @@
     const isEdit = itineraryDayMode === "edit";
     document.querySelectorAll("#itinerary-editor .itinerary-card-embed input, #itinerary-editor .itinerary-card-embed select, #itinerary-editor .itinerary-card-embed textarea")
       .forEach((el) => { el.disabled = !isEdit; });
-    document.querySelectorAll("#itinerary-editor .itinerary-card-embed .itinerary-card-delete-btn, #itinerary-editor .itinerary-card-embed .itinerary-card-move-group, #itinerary-editor .itinerary-card-embed .itinerary-card-edit-link-btn")
+    document.querySelectorAll("#itinerary-editor .itinerary-card-embed .itinerary-card-delete-btn, #itinerary-editor .itinerary-card-embed .itinerary-card-move-group, #itinerary-editor .itinerary-card-embed .itinerary-card-edit-link-btn, #itinerary-editor .itinerary-card-embed .itinerary-card-insert-after-btn")
       .forEach((el) => { el.style.display = isEdit ? "" : "none"; });
   }
 
