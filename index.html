@@ -1869,7 +1869,7 @@
     node.appendChild(leftCol);
     node.appendChild(mainCol);
     node.appendChild(rightCol);
-    node.dataset.hydrated = "true";
+    node._hydrated = true;
     autoResizeTextarea(descInput); // 卡片已經掛到畫面上,現在量出來的高度才準確,讓多行說明一開始就完整顯示
   }
 
@@ -1884,7 +1884,7 @@
     Array.from(root.querySelectorAll(".itinerary-card-embed[data-card-id]")).forEach((node) => {
       const id = node.getAttribute("data-card-id");
       existingIds.add(id);
-      if (node.dataset.hydrated === "true") return; // 已經是活的,不要重建,避免打斷正在輸入的游標
+      if (node._hydrated) return; // 已經是活的,不要重建,避免打斷正在輸入的游標
       const card = currentItineraryCards.find((c) => c.id === id);
       if (card) populateItineraryCardNode(node, card);
     });
@@ -1897,7 +1897,7 @@
     });
     if (missing.length > 0) {
       Array.from(root.querySelectorAll(".itinerary-card-embed[data-card-id]")).forEach((node) => {
-        if (node.dataset.hydrated === "true") return;
+        if (node._hydrated) return;
         const id = node.getAttribute("data-card-id");
         const card = currentItineraryCards.find((c) => c.id === id);
         if (card) populateItineraryCardNode(node, card);
