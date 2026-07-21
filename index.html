@@ -874,15 +874,27 @@
     if (e.target.id === "itinerary-image-lightbox") closeItineraryImageLightbox(); // 點背景空白處也可以關閉
   });
 
-  // 大圖(1600px)的 blob URL 快取,key 是 media id。
-  // 用途:1) 同一張圖在同一次瀏覽相簿的過程中只抓一次,滑回上一張不用重新打 API;
+  // 大圖的 blob URL 快取,key 是 "media id:尺寸"。
+  // 用途:1) 同一張圖、同一個尺寸在同一次瀏覽相簿的過程中只抓一次,滑回上一張不用重新打 API;
   //       2) 讓「預先載入相鄰圖片」的結果有地方可以存,使用者滑到下一張時多半已經抓好了。
   // 用 Map 保留插入順序,超過上限就把最舊的一筆淘汰並釋放 blob,避免記憶體無限累積。
   const lightboxImageCache = new Map();
   const LIGHTBOX_CACHE_LIMIT = 12;
 
-  function cacheLightboxEntry(mediaId, entry) {
-    lightboxImageCache.set(mediaId, entry);
+  // 依目前視窗大小 + 裝置畫素比,估算大圖實際需要的尺寸,不用每次都拉滿 1600px。
+  // 大圖在畫面上最大只會顯示到 90vw / 80vh(對應 CSS 的 max-width/max-height),
+  // 視窗開比較小或螢幕解析度較低時,抓小一點的圖就夠清楚,能省下傳輸量跟等待時間。
+  // 伺服器本身仍有 1600px 的上限,所以全螢幕的大螢幕使用者不會有變化。
+  function computeLightboxImageSize() {
+    const dpr = window.devicePixelRatio || 1;
+    const cssMaxWidth = window.innerWidth * 0.9;
+    const cssMaxHeight = window.innerHeight * 0.8;
+    const needed = Math.max(cssMaxWidth, cssMaxHeight) * dpr;
+    return Math.max(300, Math.min(1600, Math.ceil(needed)));
+  }
+
+  function cacheLightboxEntry(cacheKey, entry) {
+    lightboxImageCache.set(cacheKey, entry);
     if (lightboxImageCache.size > LIGHTBOX_CACHE_LIMIT) {
       const oldestKey = lightboxImageCache.keys().next().value;
       const oldest = lightboxImageCache.get(oldestKey);
@@ -892,26 +904,28 @@
   }
 
   // 取得(或觸發載入)某張照片的大圖,回傳一個 Promise<objectUrl>。
-  // 同一張圖片如果正在載入中或已經載入過,直接沿用同一個 Promise,不會重複發送請求
+  // 同一張圖片、同一個尺寸如果正在載入中或已經載入過,直接沿用同一個 Promise,不會重複發送請求
   // (例如「預先載入下一張」跟「使用者剛好手動點下一張」同時發生時)。
   function fetchLightboxImage(m) {
     if (!m || !m.drive_file_id) return Promise.resolve(null);
-    const cached = lightboxImageCache.get(m.id);
+    const size = computeLightboxImageSize();
+    const cacheKey = `${m.id}:${size}`;
+    const cached = lightboxImageCache.get(cacheKey);
     if (cached) return cached.promise;
 
     const promise = (async () => {
       const headers = {};
       if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
-      const res = await fetch(`${WORKER_URL}/api/media/${m.id}/thumbnail?size=1600`, { headers });
+      const res = await fetch(`${WORKER_URL}/api/media/${m.id}/thumbnail?size=${size}`, { headers });
       if (!res.ok) throw new Error("圖片載入失敗");
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
-      const entry = lightboxImageCache.get(m.id);
+      const entry = lightboxImageCache.get(cacheKey);
       if (entry) entry.url = url; // 補上 blob URL,之後被淘汰時才知道要釋放哪一個
       return url;
     })();
 
-    cacheLightboxEntry(m.id, { url: null, promise });
+    cacheLightboxEntry(cacheKey, { url: null, promise });
     return promise;
   }
 
