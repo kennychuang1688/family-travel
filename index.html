@@ -163,7 +163,9 @@
   .lightbox-content img {
     max-width: 90vw; max-height: 80vh; width: auto; height: auto; border: none; border-radius: 8px;
     object-fit: contain; display: block; margin: 0 auto;
+    transition: filter 0.15s ease-out;
   }
+  .lightbox-content img.lightbox-img-loading { filter: blur(10px); }
   .lightbox-top-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
   .lightbox-top-actions { display: flex; gap: 8px; }
   .lightbox-caption-wrap { padding: 0 4px; }
@@ -872,6 +874,68 @@
     if (e.target.id === "itinerary-image-lightbox") closeItineraryImageLightbox(); // 點背景空白處也可以關閉
   });
 
+  // 大圖(1600px)的 blob URL 快取,key 是 media id。
+  // 用途:1) 同一張圖在同一次瀏覽相簿的過程中只抓一次,滑回上一張不用重新打 API;
+  //       2) 讓「預先載入相鄰圖片」的結果有地方可以存,使用者滑到下一張時多半已經抓好了。
+  // 用 Map 保留插入順序,超過上限就把最舊的一筆淘汰並釋放 blob,避免記憶體無限累積。
+  const lightboxImageCache = new Map();
+  const LIGHTBOX_CACHE_LIMIT = 12;
+
+  function cacheLightboxEntry(mediaId, entry) {
+    lightboxImageCache.set(mediaId, entry);
+    if (lightboxImageCache.size > LIGHTBOX_CACHE_LIMIT) {
+      const oldestKey = lightboxImageCache.keys().next().value;
+      const oldest = lightboxImageCache.get(oldestKey);
+      lightboxImageCache.delete(oldestKey);
+      if (oldest && oldest.url) URL.revokeObjectURL(oldest.url);
+    }
+  }
+
+  // 取得(或觸發載入)某張照片的大圖,回傳一個 Promise<objectUrl>。
+  // 同一張圖片如果正在載入中或已經載入過,直接沿用同一個 Promise,不會重複發送請求
+  // (例如「預先載入下一張」跟「使用者剛好手動點下一張」同時發生時)。
+  function fetchLightboxImage(m) {
+    if (!m || !m.drive_file_id) return Promise.resolve(null);
+    const cached = lightboxImageCache.get(m.id);
+    if (cached) return cached.promise;
+
+    const promise = (async () => {
+      const headers = {};
+      if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
+      const res = await fetch(`${WORKER_URL}/api/media/${m.id}/thumbnail?size=1600`, { headers });
+      if (!res.ok) throw new Error("圖片載入失敗");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const entry = lightboxImageCache.get(m.id);
+      if (entry) entry.url = url; // 補上 blob URL,之後被淘汰時才知道要釋放哪一個
+      return url;
+    })();
+
+    cacheLightboxEntry(m.id, { url: null, promise });
+    return promise;
+  }
+
+  function revokeLightboxImageCache() {
+    lightboxImageCache.forEach((entry) => {
+      if (entry.url) URL.revokeObjectURL(entry.url);
+    });
+    lightboxImageCache.clear();
+  }
+
+  // 在背景預先載入上一張、下一張的大圖,讓使用者實際滑過去時大多已經準備好了,
+  // 不會每滑一次都要重新等一次網路請求。失敗就默默略過,不影響目前畫面。
+  function preloadLightboxNeighbors() {
+    const total = lightboxItems.length;
+    if (total <= 1) return;
+    [1, -1].forEach((offset) => {
+      const idx = (lightboxIndex + offset + total) % total;
+      const m = lightboxItems[idx];
+      if (m && (m.mime_type || "").startsWith("image") && m.drive_file_id) {
+        fetchLightboxImage(m).catch(() => {});
+      }
+    });
+  }
+
   function openLightbox(items, index) {
     lightboxItems = items || [];
     lightboxIndex = index || 0;
@@ -883,7 +947,6 @@
     const m = lightboxItems[lightboxIndex];
     if (!m) return;
     const body = document.getElementById("lightbox-body");
-    body.querySelectorAll("img[data-object-url]").forEach((img) => URL.revokeObjectURL(img.dataset.objectUrl));
     body.innerHTML = "";
 
     const isImage = (m.mime_type || "").startsWith("image");
@@ -894,27 +957,35 @@
       // 這樣不會受使用者瀏覽器對 Google 帳號登入狀態不穩定的影響。
       const img = document.createElement("img");
       img.alt = m.name || "";
+
+      // 先用畫廊格子裡已經載入好的 300px 縮圖當「模糊佔位圖」立即顯示,
+      // 不讓使用者看到一片空白;等大圖(1600px)真的抓回來後再無縫換上、去掉模糊。
+      const placeholder = smallThumbCache.get(m.id);
+      if (placeholder) {
+        img.src = placeholder;
+        img.classList.add("lightbox-img-loading");
+      }
       body.appendChild(img);
 
-      (async () => {
-        try {
-          const headers = {};
-          if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
-          const res = await fetch(`${WORKER_URL}/api/media/${m.id}/thumbnail?size=1600`, { headers });
-          if (!res.ok) throw new Error("圖片載入失敗");
-          const blob = await res.blob();
-          const objectUrl = URL.createObjectURL(blob);
-          img.dataset.objectUrl = objectUrl;
-          img.src = objectUrl;
-        } catch (e) {
+      fetchLightboxImage(m)
+        .then((url) => {
+          // 大圖抓回來的當下,使用者可能已經滑到別張照片了,這種情況就不要再套用到畫面上
+          if (lightboxItems[lightboxIndex] !== m || !url) return;
+          img.src = url;
+          img.classList.remove("lightbox-img-loading");
+        })
+        .catch((e) => {
+          if (lightboxItems[lightboxIndex] !== m) return;
           // 萬一失敗,退回原本的 Google 內嵌檢視器,確保至少看得到
           body.innerHTML = "";
           const iframe = document.createElement("iframe");
           iframe.src = `https://drive.google.com/file/d/${m.drive_file_id}/preview`;
           iframe.allow = "autoplay";
           body.appendChild(iframe);
-        }
-      })();
+        });
+
+      // 順手在背景預先載入上一張/下一張,使用者滑過去時大多已經準備好了
+      preloadLightboxNeighbors();
     } else if (m.drive_file_id && (m.mime_type || "").startsWith("video")) {
       // 影片:改用 Google Drive 自己的內嵌預覽 iframe。
       // 這裡原本試過改用瀏覽器原生的 <video> 播放器,直接串流檔案原始內容,
@@ -1027,7 +1098,6 @@
     forceSaveCaptionIfChanged();
     document.getElementById("lightbox-overlay").style.display = "none";
     const body = document.getElementById("lightbox-body");
-    body.querySelectorAll("img[data-object-url]").forEach((img) => URL.revokeObjectURL(img.dataset.objectUrl));
     body.innerHTML = "";
     captionInput.onchange = null;
     lightboxItems = [];
@@ -3264,14 +3334,19 @@
   // path 是打我們自己 Worker 的 API 路徑(例如 /api/media/xxx/thumbnail?size=300),
   // 而不是直接連 drive.google.com 的網址——這樣才能帶 Authorization header,
   // 不需要依賴使用者瀏覽器對 Google 帳號當下的登入狀態,避免縮圖時好時壞的問題。
-  function queueImageLoad(img, path) {
-    imageLoadQueue.push({ img, path });
+  // 相簿格子縮圖(300px)的 blob URL 快取,key 是 media id。
+  // 用途:點開大圖時可以馬上拿這張已經載入好的小圖當「模糊佔位圖」先顯示,
+  // 不必讓使用者先看到一片空白,等大圖(1600px)抓回來後再無縫換上。
+  const smallThumbCache = new Map();
+
+  function queueImageLoad(img, path, mediaId) {
+    imageLoadQueue.push({ img, path, mediaId });
     processImageLoadQueue();
   }
 
   function processImageLoadQueue() {
     while (activeImageLoads < IMAGE_LOAD_CONCURRENCY && imageLoadQueue.length > 0) {
-      const { img, path } = imageLoadQueue.shift();
+      const { img, path, mediaId } = imageLoadQueue.shift();
       activeImageLoads++;
       let settled = false;
       const done = () => {
@@ -3295,6 +3370,7 @@
           const objectUrl = URL.createObjectURL(blob);
           img.dataset.objectUrl = objectUrl; // 之後畫面重繪時可以拿來釋放記憶體
           img.src = objectUrl;
+          if (mediaId) smallThumbCache.set(mediaId, objectUrl);
         } catch (e) {
           // 失敗就維持空白,外層 .media-thumb 的底色會顯示出來,不至於顯示壞掉的圖示
         } finally {
@@ -3309,6 +3385,7 @@
     document.querySelectorAll("#gallery img[data-object-url]").forEach((img) => {
       URL.revokeObjectURL(img.dataset.objectUrl);
     });
+    smallThumbCache.clear();
   }
 
   function createMediaCard(m, idx) {
@@ -3342,7 +3419,7 @@
       const img = document.createElement("img");
       img.loading = "lazy";
       thumb.appendChild(img);
-      queueImageLoad(img, thumbPath);
+      queueImageLoad(img, thumbPath, m.id);
       if (isVideo) {
         const overlay = document.createElement("div");
         overlay.className = "video-play-overlay";
@@ -3426,6 +3503,7 @@
     const gallery = document.getElementById("gallery");
     const emptyEl = document.getElementById("media-empty");
     revokeGalleryObjectUrls();
+    revokeLightboxImageCache();
     gallery.innerHTML = "";
     emptyEl.style.display = items.length === 0 ? "block" : "none";
 
