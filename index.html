@@ -1181,7 +1181,17 @@
     undoBtn.id = "itinerary-undo-btn";
     undoBtn.textContent = "↶";
     undoBtn.title = "復原上一步";
-    undoBtn.addEventListener("click", () => quillItinerary.history.undo());
+    let lastItineraryUndoSource = null; // "card" 或 "quill",記住上次按復原用的是哪一套,恢復復原才能對應正確的那一套
+
+    undoBtn.addEventListener("click", () => {
+      // 判斷最近一筆變動,是卡片欄位的修改、還是內文本身的編輯,決定要用哪一套復原機制
+      if (lastCardFieldEditAt > lastQuillChangeAt) {
+        if (undoCardFieldChange()) lastItineraryUndoSource = "card";
+      } else {
+        quillItinerary.history.undo();
+        lastItineraryUndoSource = "quill";
+      }
+    });
     toolbarEl.appendChild(undoBtn);
 
     const redoBtn = document.createElement("button");
@@ -1189,7 +1199,13 @@
     redoBtn.id = "itinerary-redo-btn";
     redoBtn.textContent = "↷";
     redoBtn.title = "恢復復原";
-    redoBtn.addEventListener("click", () => quillItinerary.history.redo());
+    redoBtn.addEventListener("click", () => {
+      if (lastItineraryUndoSource === "card") {
+        redoCardFieldChange();
+      } else {
+        quillItinerary.history.redo();
+      }
+    });
     toolbarEl.appendChild(redoBtn);
 
     // 加入「新增行程表格」按鈕:在目前游標位置插入一張結構化的行程卡片
@@ -1268,7 +1284,10 @@
     });
 
     quillItinerary.on("text-change", (delta, oldDelta, source) => {
-      if (source === "user") scheduleAutoSave();
+      if (source === "user") {
+        scheduleAutoSave();
+        lastQuillChangeAt = Date.now();
+      }
       if (!suppressCardHydration) hydrateItineraryCardEmbeds(); // 確保任何新出現的行程表格空殼都被填上實際內容
     });
 
@@ -1913,6 +1932,71 @@
     el.addEventListener("paste", (e) => e.stopPropagation());
   }
 
+  // 行程表格卡片裡的欄位(時間/類別/名稱/說明/備註/停留時間)是一般的 input/select/textarea,
+  // 不是透過 Quill 的編輯指令去改的,所以 Quill 自己內建的復原機制完全不知道這些欄位發生過什麼變化。
+  // 這裡另外做一組專門給卡片欄位用的復原/恢復復原紀錄,跟 Quill 本身的內文復原分開處理;
+  // 上面工具列的「復原/恢復復原」按鈕,會依照「最近一筆是卡片欄位、還是內文本身」來決定要用哪一組。
+  const cardFieldUndoStack = [];
+  const cardFieldRedoStack = [];
+  const CARD_FIELD_UNDO_LIMIT = 50;
+  let lastCardFieldEditAt = 0;
+  let lastQuillChangeAt = 0;
+
+  function recordCardFieldChange(cardId, field, oldValue, newValue) {
+    if (oldValue === newValue) return;
+    cardFieldUndoStack.push({ cardId, field, oldValue, newValue });
+    if (cardFieldUndoStack.length > CARD_FIELD_UNDO_LIMIT) cardFieldUndoStack.shift();
+    cardFieldRedoStack.length = 0; // 有新的修改發生,原本可以「恢復」的動作就作廢了
+    lastCardFieldEditAt = Date.now();
+  }
+
+  // 幫一般的文字輸入欄位(input/textarea)加上復原紀錄:進入欄位時記住原本的值,
+  // 離開欄位時如果值有改變,才記一筆復原紀錄(而不是每打一個字就記一筆,那樣復原會很瑣碎難用)
+  function trackFieldUndo(el, card, field) {
+    let valueOnFocus = null;
+    el.addEventListener("focus", () => { valueOnFocus = el.value; });
+    el.addEventListener("blur", () => {
+      if (valueOnFocus === null) return;
+      if (el.value !== valueOnFocus) recordCardFieldChange(card.id, field, valueOnFocus, el.value);
+      valueOnFocus = null;
+    });
+  }
+
+  function applyCardFieldValue(cardId, field, value) {
+    const card = currentItineraryCards.find((c) => c.id === cardId);
+    if (!card) return;
+    card[field] = value;
+    scheduleCardSave(cardId);
+
+    const cardNode = quillItinerary.root.querySelector(`.itinerary-card-embed[data-card-id="${cardId}"]`);
+    if (!cardNode) return;
+    const fieldEl = cardNode.querySelector(`[data-field="${field}"]`);
+    if (fieldEl) {
+      fieldEl.value = value;
+      if (fieldEl.tagName === "TEXTAREA") autoResizeTextarea(fieldEl);
+    }
+    if (field === "category") {
+      const iconEl = cardNode.querySelector('[data-field="category-icon"]');
+      if (iconEl) iconEl.textContent = ITINERARY_CATEGORY_ICONS[value] || "★";
+    }
+  }
+
+  function undoCardFieldChange() {
+    const action = cardFieldUndoStack.pop();
+    if (!action) return false;
+    applyCardFieldValue(action.cardId, action.field, action.oldValue);
+    cardFieldRedoStack.push(action);
+    return true;
+  }
+
+  function redoCardFieldChange() {
+    const action = cardFieldRedoStack.pop();
+    if (!action) return false;
+    applyCardFieldValue(action.cardId, action.field, action.newValue);
+    cardFieldUndoStack.push(action);
+    return true;
+  }
+
   function scheduleCardSave(cardId) {
     clearTimeout(itineraryCardSaveTimers[cardId]);
     itineraryCardSaveTimers[cardId] = setTimeout(() => saveItineraryCard(cardId), 800);
@@ -1984,6 +2068,7 @@
     timeInput.maxLength = 5;
     timeInput.inputMode = "numeric";
     timeInput.value = card.time || "";
+    timeInput.dataset.field = "time";
     stopPasteBubble(timeInput);
     timeInput.addEventListener("input", () => {
       // 只保留數字,自動在第 2、3 碼中間補上冒號(例如打 0830 會自動變成 08:30)
@@ -2004,6 +2089,7 @@
       card.time = formatted;
       scheduleCardSave(card.id);
     });
+    trackFieldUndo(timeInput, card, "time");
     timeRow.appendChild(timeIcon);
     timeRow.appendChild(timeInput);
 
@@ -2011,9 +2097,11 @@
     categoryRow.className = "itinerary-card-left-row";
     const categoryIcon = document.createElement("span");
     categoryIcon.className = "itinerary-card-icon";
+    categoryIcon.dataset.field = "category-icon";
     categoryIcon.textContent = ITINERARY_CATEGORY_ICONS[card.category || "景點"] || "★";
 
     const categorySelect = document.createElement("select");
+    categorySelect.dataset.field = "category";
     stopPasteBubble(categorySelect);
     ITINERARY_CARD_CATEGORIES.forEach((cat) => {
       const opt = document.createElement("option");
@@ -2023,9 +2111,11 @@
       categorySelect.appendChild(opt);
     });
     categorySelect.addEventListener("change", () => {
+      const oldValue = card.category;
       card.category = categorySelect.value;
       categoryIcon.textContent = ITINERARY_CATEGORY_ICONS[card.category] || "★";
       scheduleCardSave(card.id);
+      recordCardFieldChange(card.id, "category", oldValue, card.category);
     });
     categoryRow.appendChild(categoryIcon);
     categoryRow.appendChild(categorySelect);
@@ -2043,6 +2133,7 @@
     durationInput.className = "itinerary-card-duration-value";
     durationInput.placeholder = "停留";
     durationInput.value = card.duration_value || "";
+    durationInput.dataset.field = "duration_value";
     stopPasteBubble(durationInput);
     durationInput.addEventListener("input", () => {
       // 只保留數字(可以有小數點,例如 1.5 小時)
@@ -2050,9 +2141,11 @@
       card.duration_value = durationInput.value;
       scheduleCardSave(card.id);
     });
+    trackFieldUndo(durationInput, card, "duration_value");
 
     const durationUnitSelect = document.createElement("select");
     durationUnitSelect.className = "itinerary-card-duration-unit";
+    durationUnitSelect.dataset.field = "duration_unit";
     stopPasteBubble(durationUnitSelect);
     [["hr", "hr"], ["min", "min"]].forEach(([value, label]) => {
       const opt = document.createElement("option");
@@ -2062,8 +2155,10 @@
       durationUnitSelect.appendChild(opt);
     });
     durationUnitSelect.addEventListener("change", () => {
+      const oldValue = card.duration_unit;
       card.duration_unit = durationUnitSelect.value;
       scheduleCardSave(card.id);
+      recordCardFieldChange(card.id, "duration_unit", oldValue, card.duration_unit);
     });
 
     durationRow.appendChild(durationIcon);
@@ -2084,32 +2179,38 @@
     titleInput.placeholder = "行程名稱";
     titleInput.rows = 1;
     titleInput.value = card.title || "";
+    titleInput.dataset.field = "title";
     stopPasteBubble(titleInput);
     titleInput.addEventListener("input", () => {
       card.title = titleInput.value;
       autoResizeTextarea(titleInput);
       scheduleCardSave(card.id);
     });
+    trackFieldUndo(titleInput, card, "title");
 
     const descInput = document.createElement("textarea");
     descInput.className = "itinerary-card-desc";
     descInput.placeholder = "行程說明";
     descInput.rows = 1;
     descInput.value = card.description || "";
+    descInput.dataset.field = "description";
     stopPasteBubble(descInput);
     descInput.addEventListener("input", () => {
       card.description = descInput.value;
       autoResizeTextarea(descInput);
       scheduleCardSave(card.id);
     });
+    trackFieldUndo(descInput, card, "description");
 
     const notesInput = document.createElement("input");
     notesInput.type = "text";
     notesInput.className = "itinerary-card-notes";
     notesInput.placeholder = "備註";
     notesInput.value = card.notes || "";
+    notesInput.dataset.field = "notes";
     stopPasteBubble(notesInput);
     notesInput.addEventListener("input", () => { card.notes = notesInput.value; scheduleCardSave(card.id); });
+    trackFieldUndo(notesInput, card, "notes");
 
     mainCol.appendChild(titleInput);
     mainCol.appendChild(descInput);
