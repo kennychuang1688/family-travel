@@ -338,7 +338,7 @@
   .itinerary-card,
   .itinerary-card-embed {
     display: grid;
-    grid-template-columns: 132px 1fr 40px;
+    grid-template-columns: 148px 1fr 40px;
     gap: 8px;
     align-items: stretch;
     border: 1px solid var(--line);
@@ -351,14 +351,14 @@
   .itinerary-card-left { display: flex; flex-direction: column; gap: 6px; }
   .itinerary-card-left-row { display: flex; align-items: center; gap: 5px; }
   .itinerary-card-left-row .itinerary-card-icon {
-    font-size: 14px; flex: none; line-height: 1;
+    font-size: 15px; flex: none; line-height: 1;
     font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
   }
-  .itinerary-card-duration-value { flex: 1 1 auto; min-width: 30px; padding-left: 6px !important; padding-right: 4px !important; }
-  .itinerary-card-duration-unit { flex: 0 0 auto; width: auto !important; padding: 5px 3px !important; font-size: 11px !important; }
+  .itinerary-card-duration-value { flex: 1 1 auto; min-width: 34px; padding-left: 6px !important; padding-right: 4px !important; }
+  .itinerary-card-duration-unit { flex: 0 0 auto; width: auto !important; padding: 6px 4px !important; font-size: 13px !important; }
   .itinerary-card-left input, .itinerary-card-left select {
-    padding: 5px 7px; border: 1px solid var(--line); border-radius: 7px;
-    background: var(--bg-softer); color: var(--ink); font-size: 12px; width: 100%; min-width: 0;
+    padding: 6px 8px; border: 1px solid var(--line); border-radius: 7px;
+    background: var(--bg-softer); color: var(--ink); font-size: 15px; width: 100%; min-width: 0;
   }
   .itinerary-card-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
   .itinerary-card-main input, .itinerary-card-main textarea {
@@ -2200,13 +2200,23 @@
     titleInput.className = "itinerary-card-title";
     titleInput.placeholder = "行程名稱";
     titleInput.rows = 1;
-    titleInput.value = card.title || "";
+    titleInput.value = (card.title || "").replace(/[\r\n]+/g, " ");
     titleInput.dataset.field = "title";
     stopPasteBubble(titleInput);
     titleInput.addEventListener("input", () => {
+      // 行程名稱不需要手動換行,只靠自動換行(寬度不夠才會折行);
+      // 如果因為複製貼上等原因夾帶了換行字元,這裡先清掉,避免欄位莫名其妙變得比實際需要更高
+      if (titleInput.value.includes("\n") || titleInput.value.includes("\r")) {
+        const cursorPos = titleInput.selectionStart;
+        titleInput.value = titleInput.value.replace(/[\r\n]+/g, " ");
+        titleInput.setSelectionRange(cursorPos, cursorPos);
+      }
       card.title = titleInput.value;
       autoResizeTextarea(titleInput);
       scheduleCardSave(card.id);
+    });
+    titleInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") e.preventDefault(); // 行程名稱不允許按 Enter 手動換行
     });
     trackFieldUndo(titleInput, card, "title");
 
