@@ -1324,6 +1324,29 @@
       }
     }
 
+    // 圖片被選取(顯示金色外框跟控點)之後,按鍵盤的 Delete / Backspace 可以直接刪除這張圖片。
+    // 因為圖片是用滑鼠點選的方式選取,不是靠 Quill 本身的文字游標選取,所以刪除鍵預設不會生效,
+    // 這裡另外監聽鍵盤事件,判斷目前有沒有選取圖片,有的話就手動把這張圖片從內文中移除。
+    document.addEventListener("keydown", (e) => {
+      if (!selectedImg) return;
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
+      // 如果游標正在某個輸入欄位(卡片欄位、或其他表單)裡打字,刪除鍵應該是用來刪文字,
+      // 不能不分青紅皂白就把圖片刪掉
+      const activeTag = document.activeElement ? document.activeElement.tagName : "";
+      if (activeTag === "INPUT" || activeTag === "TEXTAREA" || activeTag === "SELECT") return;
+
+      e.preventDefault();
+      const blot = Quill.find(selectedImg);
+      if (blot) {
+        const index = quillItinerary.getIndex(blot);
+        quillItinerary.deleteText(index, 1, "user");
+      } else {
+        selectedImg.remove();
+      }
+      selectImage(null);
+      scheduleAutoSave();
+    });
+
     quillItinerary.root.addEventListener("click", (e) => {
       if (e.target.tagName === "IMG") {
         if (itineraryDayMode === "edit") {
