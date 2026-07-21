@@ -953,6 +953,7 @@
     // 說明文字:顯示目前已加的文字,也可以直接在這裡編輯
     const captionInput = document.getElementById("lightbox-caption-input");
     captionInput.value = m.caption || "";
+    captionInput.dataset.originalValue = m.caption || "";
     captionInput.onchange = async () => {
       try {
         await apiFetch(`/api/media/${m.id}`, {
@@ -1006,27 +1007,33 @@
     document.getElementById("lightbox-next").style.display = showNav ? "flex" : "none";
   }
 
+  // 只有在使用者真的有改過說明文字時,才強制觸發存檔;如果沒有改過(值還跟原本一樣),
+  // 就不要硬發一個 change 事件出去——不然每次關閉/切換照片都會白白呼叫一次 API,
+  // 遇到登入權杖剛好過期時,還會跳出「更新說明失敗」的錯誤訊息嚇到使用者,即使他根本沒有動過說明文字。
+  function forceSaveCaptionIfChanged() {
+    const captionInput = document.getElementById("lightbox-caption-input");
+    if (captionInput.onchange && captionInput.value !== captionInput.dataset.originalValue) {
+      captionInput.dispatchEvent(new Event("change"));
+    }
+  }
+
   function lightboxPrev() {
     if (lightboxItems.length === 0) return;
-    const captionInput = document.getElementById("lightbox-caption-input");
-    if (captionInput.onchange) captionInput.dispatchEvent(new Event("change"));
+    forceSaveCaptionIfChanged();
     lightboxIndex = (lightboxIndex - 1 + lightboxItems.length) % lightboxItems.length;
     renderLightboxContent();
   }
 
   function lightboxNext() {
     if (lightboxItems.length === 0) return;
-    const captionInput = document.getElementById("lightbox-caption-input");
-    if (captionInput.onchange) captionInput.dispatchEvent(new Event("change"));
+    forceSaveCaptionIfChanged();
     lightboxIndex = (lightboxIndex + 1) % lightboxItems.length;
     renderLightboxContent();
   }
 
   function closeLightbox() {
     const captionInput = document.getElementById("lightbox-caption-input");
-    // 保險起見,關閉之前先強制觸發一次 change,確保剛打完字、還沒失焦就直接按關閉的情況下,
-    // 說明文字還是會被存下來,不會因為沒有真的觸發過 change 事件就被當作沒改過
-    if (captionInput.onchange) captionInput.dispatchEvent(new Event("change"));
+    forceSaveCaptionIfChanged();
     document.getElementById("lightbox-overlay").style.display = "none";
     const body = document.getElementById("lightbox-body");
     body.querySelectorAll("img[data-object-url]").forEach((img) => URL.revokeObjectURL(img.dataset.objectUrl));
