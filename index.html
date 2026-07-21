@@ -2345,6 +2345,14 @@
     node._hydrated = true;
     autoResizeTextarea(descInput); // 卡片已經掛到畫面上,現在量出來的高度才準確,讓多行說明一開始就完整顯示
     autoResizeTextarea(titleInput);
+    // 自訂字型(芫荽體)可能還沒下載完成,用瀏覽器預設字型量出來的高度會不準,
+    // 等字型真正載入完成後再重新量一次,才是最終正確的高度,避免欄位莫名比實際內容還要高。
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(() => {
+        autoResizeTextarea(descInput);
+        autoResizeTextarea(titleInput);
+      });
+    }
   }
 
   // 讓內文中每一個「行程表格」的嵌入空殼都填上實際內容;
