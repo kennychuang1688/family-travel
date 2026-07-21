@@ -915,6 +915,27 @@
           body.appendChild(iframe);
         }
       })();
+    } else if (m.drive_file_id && (m.mime_type || "").startsWith("video")) {
+      // 影片:改用瀏覽器原生的 <video> 播放器,而不是嵌入 Google Drive 自己的預覽 iframe。
+      // Google 自己的播放器介面,在部分手機瀏覽器(尤其 iOS Safari)上會跟系統原生的
+      // 影片控制列疊在一起,變成畫面中間、下面各有一套控制項,看起來很亂。
+      // 換成原生 <video> 播放,只會有瀏覽器自己那一套控制列,畫面乾淨很多。
+      const video = document.createElement("video");
+      video.controls = true;
+      video.playsInline = true;
+      video.style.width = "100%";
+      video.style.maxHeight = "80vh";
+      video.style.background = "#000";
+      video.src = `${WORKER_URL}/api/media/${m.id}/stream`;
+      video.onerror = () => {
+        // 萬一串流失敗,退回原本的 Google 內嵌檢視器,確保至少看得到
+        body.innerHTML = "";
+        const iframe = document.createElement("iframe");
+        iframe.src = `https://drive.google.com/file/d/${m.drive_file_id}/preview`;
+        iframe.allow = "autoplay";
+        body.appendChild(iframe);
+      };
+      body.appendChild(video);
     } else if (m.drive_file_id) {
       const iframe = document.createElement("iframe");
       iframe.src = `https://drive.google.com/file/d/${m.drive_file_id}/preview`;
