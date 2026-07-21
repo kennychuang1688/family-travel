@@ -390,11 +390,20 @@
     background: transparent; border-color: transparent; opacity: 0.85; cursor: default;
   }
   @media (max-width: 560px) {
-    .itinerary-card, .itinerary-card-embed { grid-template-columns: 1fr; }
-    .itinerary-card-left { flex-direction: column; }
+    .itinerary-card, .itinerary-card-embed { grid-template-columns: 1fr; padding: 10px 12px; }
+    .itinerary-card-left { flex-direction: column; gap: 8px; }
     .itinerary-card-left-row { width: 100%; }
+    .itinerary-card-left-row .itinerary-card-icon { font-size: 19px; }
+    .itinerary-card-left input, .itinerary-card-left select { font-size: 19px; padding: 7px 9px; }
+    .itinerary-card-duration-unit { font-size: 16px !important; }
     .itinerary-card-right { flex-direction: row; justify-content: flex-end; gap: 8px; }
     .itinerary-card-move-group, .itinerary-card-nav-group { flex-direction: row; }
+    .itinerary-card-main { margin-top: 6px; gap: 0; }
+    /* 預覽模式(欄位變成 disabled)時,把下拉選單原生的上下箭頭圖示藏起來——
+       反正這時候不能點擊修改,留著那個箭頭圖示只會讓人誤以為還可以互動 */
+    .itinerary-card select:disabled, .itinerary-card-embed select:disabled {
+      appearance: none; -webkit-appearance: none; background-image: none; padding-right: 9px;
+    }
   }
 
   #itinerary-editor.ql-container.ql-snow {
