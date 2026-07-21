@@ -192,8 +192,12 @@
   @media (max-width: 700px) {
     .lightbox-nav-btn { width: 40px; height: 40px; font-size: 22px; margin: 0 6px; }
   }
-  .media-info { padding: 8px 10px; font-size: 12px; height: 56px; box-sizing: border-box; overflow: hidden; }
+  .media-info { padding: 8px 10px; font-size: 12px; height: 80px; box-sizing: border-box; overflow: hidden; }
   .media-info input { width: 100%; margin-bottom: 6px; font-size: 12px; padding: 5px 6px; }
+  .media-caption-textarea {
+    width: 100%; margin-bottom: 6px; font-size: 12px; padding: 5px 6px; font-family: inherit;
+    resize: none; overflow: hidden; line-height: 1.3; height: 34px; box-sizing: border-box;
+  }
   .media-name { font-size: 11px; color: rgba(59,42,33,0.55); margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .media-actions { display: flex; gap: 8px; margin-top: 4px; }
   .media-actions a, .media-actions button { font-size: 11px; }
@@ -943,7 +947,7 @@
         }
         // 畫廊格子裡對應的那個輸入框是另一個獨立的 DOM 元素,資料更新了不會自動連動,
         // 這裡直接找到它、把顯示的文字也一起更新,不然關掉大圖檢視後畫面會看起來像是消失了
-        const gridCaptionInput = document.querySelector(`.media-info input[data-media-id="${m.id}"]`);
+        const gridCaptionInput = document.querySelector(`.media-info textarea[data-media-id="${m.id}"]`);
         if (gridCaptionInput) gridCaptionInput.value = captionInput.value;
       } catch (err) {
         alert("更新說明失敗:" + err.message);
@@ -3337,8 +3341,9 @@
     nameLabel.textContent = m.name || "";
     nameLabel.title = m.name || "";
 
-    const captionInput = document.createElement("input");
-    captionInput.type = "text";
+    const captionInput = document.createElement("textarea");
+    captionInput.className = "media-caption-textarea";
+    captionInput.rows = 2;
     captionInput.placeholder = "加上說明文字...";
     captionInput.value = m.caption || "";
     captionInput.dataset.mediaId = m.id;
