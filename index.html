@@ -338,52 +338,51 @@
   .itinerary-card,
   .itinerary-card-embed {
     display: grid;
-    grid-template-columns: 128px 1fr 44px;
-    gap: 14px;
+    grid-template-columns: 108px 1fr 40px;
+    gap: 10px;
     align-items: stretch;
     border: 1px solid var(--line);
-    border-radius: 20px;
-    padding: 16px 18px;
-    margin: 14px 0;
+    border-radius: 16px;
+    padding: 12px 14px;
+    margin: 10px 0;
     background: #fff;
   }
   .ql-editor .itinerary-card-embed { user-select: none; } /* 卡片外殼本身不可選取/編輯文字,裡面的輸入欄位仍可正常操作 */
-  .itinerary-card-left { display: flex; flex-direction: column; gap: 8px; }
-  .itinerary-card-left-row { display: flex; align-items: center; gap: 6px; }
+  .itinerary-card-left { display: flex; flex-direction: column; gap: 6px; }
+  .itinerary-card-left-row { display: flex; align-items: center; gap: 5px; }
   .itinerary-card-left-row .itinerary-card-icon {
-    font-size: 16px; flex: none; line-height: 1;
+    font-size: 14px; flex: none; line-height: 1;
     font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
   }
-  .itinerary-card-duration-value { flex: 1 1 auto; min-width: 34px; padding-left: 6px !important; padding-right: 4px !important; }
-  .itinerary-card-duration-unit { flex: 0 0 auto; width: auto !important; padding: 7px 3px !important; font-size: 12px !important; }
+  .itinerary-card-duration-value { flex: 1 1 auto; min-width: 30px; padding-left: 6px !important; padding-right: 4px !important; }
+  .itinerary-card-duration-unit { flex: 0 0 auto; width: auto !important; padding: 5px 3px !important; font-size: 11px !important; }
   .itinerary-card-left input, .itinerary-card-left select {
-    padding: 7px 8px; border: 1px solid var(--line); border-radius: 8px;
-    background: var(--bg-softer); color: var(--ink); font-size: 13px; width: 100%; min-width: 0;
+    padding: 5px 7px; border: 1px solid var(--line); border-radius: 7px;
+    background: var(--bg-softer); color: var(--ink); font-size: 12px; width: 100%; min-width: 0;
   }
-  .itinerary-card-main { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .itinerary-card-main { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
   .itinerary-card-main input, .itinerary-card-main textarea {
-    border: 1px solid var(--line); border-radius: 8px; background: var(--bg-softer);
-    color: var(--ink); padding: 7px 10px; width: 100%; font-family: "Iansui", "Noto Sans TC", sans-serif;
+    border: 1px solid var(--line); border-radius: 7px; background: var(--bg-softer);
+    color: var(--ink); padding: 6px 9px; width: 100%; font-family: "Iansui", "Noto Sans TC", sans-serif;
   }
   .itinerary-card-title {
-    font-size: 24px !important; font-weight: 700 !important;
+    font-size: 18px !important; font-weight: 700 !important;
     resize: none; overflow: hidden; line-height: 1.3;
   }
   .itinerary-card-desc {
-    font-size: 14px; resize: none; overflow: hidden; min-height: 40px; line-height: 1.5;
+    font-size: 13px; resize: none; overflow: hidden; min-height: 30px; line-height: 1.45;
   }
-  .itinerary-card-notes { font-size: 14px; }
   .itinerary-card-right { display: flex; flex-direction: column; justify-content: space-between; align-items: center; }
   .itinerary-card-right button {
-    border: none; background: transparent; cursor: pointer; font-size: 20px;
-    line-height: 1; padding: 4px; border-radius: 8px; color: var(--gold);
+    border: none; background: transparent; cursor: pointer; font-size: 17px;
+    line-height: 1; padding: 3px; border-radius: 7px; color: var(--gold);
     font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
   }
   .itinerary-card-right button:hover { background: var(--bg-softer); }
   .itinerary-card-right .itinerary-card-delete-btn { color: #b5473b; }
-  .itinerary-card-move-group { display: flex; flex-direction: column; gap: 2px; }
-  .itinerary-card-nav-group { display: flex; flex-direction: column; gap: 2px; }
-  .itinerary-card-move-btn { font-size: 13px !important; padding: 2px !important; }
+  .itinerary-card-move-group { display: flex; flex-direction: column; gap: 1px; }
+  .itinerary-card-nav-group { display: flex; flex-direction: column; gap: 1px; }
+  .itinerary-card-move-btn { font-size: 11px !important; padding: 1px !important; }
   .itinerary-card input:disabled, .itinerary-card select:disabled, .itinerary-card textarea:disabled,
   .itinerary-card-embed input:disabled, .itinerary-card-embed select:disabled, .itinerary-card-embed textarea:disabled {
     background: transparent; border-color: transparent; opacity: 0.85; cursor: default;
@@ -392,7 +391,7 @@
     .itinerary-card, .itinerary-card-embed { grid-template-columns: 1fr; }
     .itinerary-card-left { flex-direction: column; }
     .itinerary-card-left-row { width: 100%; }
-    .itinerary-card-right { flex-direction: row; justify-content: flex-end; gap: 10px; }
+    .itinerary-card-right { flex-direction: row; justify-content: flex-end; gap: 8px; }
     .itinerary-card-move-group, .itinerary-card-nav-group { flex-direction: row; }
   }
 
@@ -2225,19 +2224,8 @@
     });
     trackFieldUndo(descInput, card, "description");
 
-    const notesInput = document.createElement("input");
-    notesInput.type = "text";
-    notesInput.className = "itinerary-card-notes";
-    notesInput.placeholder = "備註";
-    notesInput.value = card.notes || "";
-    notesInput.dataset.field = "notes";
-    stopPasteBubble(notesInput);
-    notesInput.addEventListener("input", () => { card.notes = notesInput.value; scheduleCardSave(card.id); });
-    trackFieldUndo(notesInput, card, "notes");
-
     mainCol.appendChild(titleInput);
     mainCol.appendChild(descInput);
-    mainCol.appendChild(notesInput);
 
     // 右欄:導航(對應行程名稱)+ 刪除
     const rightCol = document.createElement("div");
