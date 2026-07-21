@@ -916,26 +916,17 @@
         }
       })();
     } else if (m.drive_file_id && (m.mime_type || "").startsWith("video")) {
-      // 影片:改用瀏覽器原生的 <video> 播放器,而不是嵌入 Google Drive 自己的預覽 iframe。
-      // Google 自己的播放器介面,在部分手機瀏覽器(尤其 iOS Safari)上會跟系統原生的
-      // 影片控制列疊在一起,變成畫面中間、下面各有一套控制項,看起來很亂。
-      // 換成原生 <video> 播放,只會有瀏覽器自己那一套控制列,畫面乾淨很多。
-      const video = document.createElement("video");
-      video.controls = true;
-      video.playsInline = true;
-      video.style.width = "100%";
-      video.style.maxHeight = "80vh";
-      video.style.background = "#000";
-      video.src = `${WORKER_URL}/api/media/${m.id}/stream`;
-      video.onerror = () => {
-        // 萬一串流失敗,退回原本的 Google 內嵌檢視器,確保至少看得到
-        body.innerHTML = "";
-        const iframe = document.createElement("iframe");
-        iframe.src = `https://drive.google.com/file/d/${m.drive_file_id}/preview`;
-        iframe.allow = "autoplay";
-        body.appendChild(iframe);
-      };
-      body.appendChild(video);
+      // 影片:改用 Google Drive 自己的內嵌預覽 iframe。
+      // 這裡原本試過改用瀏覽器原生的 <video> 播放器,直接串流檔案原始內容,
+      // 是為了解決 iOS Safari 上「畫面中間跟下面各有一套控制列」疊在一起的問題;
+      // 但後來發現 Google 的內嵌播放器其實有做「伺服器端轉檔/串流」,才能讓 .MOV 這種
+      // iPhone 拍攝的格式在各種瀏覽器上都正常顯示畫面——我們自己代理原始檔案位元組,
+      // 沒辦法做到一樣的轉檔,導致 Chrome 等瀏覽器只有聲音、沒有畫面。
+      // 兩害相權取其輕:「影片看得到畫面」比「iOS 控制列比較乾淨」重要,所以先改回來。
+      const iframe = document.createElement("iframe");
+      iframe.src = `https://drive.google.com/file/d/${m.drive_file_id}/preview`;
+      iframe.allow = "autoplay";
+      body.appendChild(iframe);
     } else if (m.drive_file_id) {
       const iframe = document.createElement("iframe");
       iframe.src = `https://drive.google.com/file/d/${m.drive_file_id}/preview`;
