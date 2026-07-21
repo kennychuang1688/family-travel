@@ -941,6 +941,10 @@
           const orig = lastMediaItems.find((x) => x.id === m.id);
           if (orig) orig.caption = captionInput.value;
         }
+        // 畫廊格子裡對應的那個輸入框是另一個獨立的 DOM 元素,資料更新了不會自動連動,
+        // 這裡直接找到它、把顯示的文字也一起更新,不然關掉大圖檢視後畫面會看起來像是消失了
+        const gridCaptionInput = document.querySelector(`.media-info input[data-media-id="${m.id}"]`);
+        if (gridCaptionInput) gridCaptionInput.value = captionInput.value;
       } catch (err) {
         alert("更新說明失敗:" + err.message);
       }
@@ -979,22 +983,30 @@
 
   function lightboxPrev() {
     if (lightboxItems.length === 0) return;
+    const captionInput = document.getElementById("lightbox-caption-input");
+    if (captionInput.onchange) captionInput.dispatchEvent(new Event("change"));
     lightboxIndex = (lightboxIndex - 1 + lightboxItems.length) % lightboxItems.length;
     renderLightboxContent();
   }
 
   function lightboxNext() {
     if (lightboxItems.length === 0) return;
+    const captionInput = document.getElementById("lightbox-caption-input");
+    if (captionInput.onchange) captionInput.dispatchEvent(new Event("change"));
     lightboxIndex = (lightboxIndex + 1) % lightboxItems.length;
     renderLightboxContent();
   }
 
   function closeLightbox() {
+    const captionInput = document.getElementById("lightbox-caption-input");
+    // 保險起見,關閉之前先強制觸發一次 change,確保剛打完字、還沒失焦就直接按關閉的情況下,
+    // 說明文字還是會被存下來,不會因為沒有真的觸發過 change 事件就被當作沒改過
+    if (captionInput.onchange) captionInput.dispatchEvent(new Event("change"));
     document.getElementById("lightbox-overlay").style.display = "none";
     const body = document.getElementById("lightbox-body");
     body.querySelectorAll("img[data-object-url]").forEach((img) => URL.revokeObjectURL(img.dataset.objectUrl));
     body.innerHTML = "";
-    document.getElementById("lightbox-caption-input").onchange = null;
+    captionInput.onchange = null;
     lightboxItems = [];
   }
   document.getElementById("lightbox-close").addEventListener("click", closeLightbox);
@@ -3329,6 +3341,7 @@
     captionInput.type = "text";
     captionInput.placeholder = "加上說明文字...";
     captionInput.value = m.caption || "";
+    captionInput.dataset.mediaId = m.id;
     captionInput.addEventListener("change", async () => {
       try {
         await apiFetch(`/api/media/${m.id}`, {
