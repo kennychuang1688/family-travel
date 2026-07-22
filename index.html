@@ -255,6 +255,23 @@
   #itinerary-toolbar .ql-picker-label.ql-active,
   #itinerary-toolbar .ql-picker-item.ql-selected { color: var(--gold); }
 
+  #notes-toolbar.ql-toolbar.ql-snow {
+    background: var(--bg-softer);
+    border-color: var(--line);
+    border-radius: 8px 8px 0 0;
+  }
+  #notes-toolbar .ql-stroke { stroke: var(--paper); }
+  #notes-toolbar .ql-fill { fill: var(--paper); }
+  #notes-toolbar .ql-picker-label { color: var(--paper); }
+  #notes-toolbar .ql-picker-options { background: var(--bg-softer); }
+  #notes-toolbar button:hover .ql-stroke,
+  #notes-toolbar button.ql-active .ql-stroke { stroke: var(--gold); }
+  #notes-toolbar button:hover .ql-fill,
+  #notes-toolbar button.ql-active .ql-fill { fill: var(--gold); }
+  #notes-toolbar .ql-picker-label.ql-active,
+  #notes-toolbar .ql-picker-item.ql-selected { color: var(--gold); }
+  #notes-editor .ql-editor { min-height: 320px; }
+
   /* 清單已在最外層時,「減少縮排」會套用這個 class,讓「這一行」單獨完全靠齊編輯區左邊緣,
      不會影響同一個 <ul>/<ol> 容器裡沒有套用的其他兄弟項目 */
   .ql-editor li.ql-list-flush-1 {
@@ -777,9 +794,11 @@
     <div id="trip-sub-notes" class="trip-subview">
       <div class="panel">
         <h2>注意事項</h2>
-        <div class="status-line" style="margin-bottom:10px;">可以記錄集合時間、行李限重、緊急聯絡電話、天氣提醒等,系統會自動儲存。</div>
-        <textarea id="trip-notes-textarea" placeholder="例如:&#10;・集合時間:8:00 於機場第一航廈&#10;・行李限重:每人 20kg&#10;・緊急聯絡電話:xxx-xxx-xxx" style="width:100%; min-height:320px; padding:14px; font-size:15px; line-height:1.8; border:1px solid var(--line); border-radius:10px; resize:vertical; font-family:inherit; box-sizing:border-box;"></textarea>
-        <div class="form-actions" style="margin-top:10px;">
+        <div class="status-line" style="margin-bottom:10px;">可以記錄集合時間、行李限重、緊急聯絡電話、天氣提醒等,系統會自動儲存。點一下分頁只能預覽,再點一下才能編輯。</div>
+        <div id="notes-editor-wrap">
+          <div id="notes-editor"></div>
+        </div>
+        <div class="form-actions" style="margin-top:14px;">
           <span class="status-line" id="trip-notes-status"></span>
         </div>
       </div>
@@ -1437,6 +1456,111 @@
     initItineraryImageResize();
   }
 
+  // ---------- 「注意事項」專用的 Quill 編輯器 ----------
+  // 跟行程規劃共用同一套 Quill 函式庫跟基本格式化工具(粗體/顏色/清單/對齊/插入圖片等),
+  // 但不包含「設為書籤」「插入書籤連結」「新增行程表格」這三個按鈕——
+  // 這三個功能都是綁定在「每一天的行程內容」這個結構上的(書籤要記錄是哪一天、行程表格卡片
+  // 存在獨立的 itinerary_cards 資料表裡,兩者都需要 day_date),而注意事項只是單一整篇的自由文字,
+  // 沒有「天」的概念,所以這幾個按鈕沒有對應的意義,拿掉比留著會誤導使用者更好。
+  let quillNotes = null;
+
+  function initQuillNotes() {
+    const toolbarOptions = [
+      [{ header: [2, 3, false] }],
+      ["bold", "italic", "underline", "strike"],
+      [{ color: [] }, { background: [] }],
+      [{ font: [false, "iansui"] }],
+      [{ size: ["small", false, "large", "huge"] }],
+      [{ list: "ordered" }, { list: "bullet" }, { list: "check" }],
+      [{ indent: "-1" }, { indent: "+1" }],
+      [{ align: [] }],
+      ["link", "image"],
+      ["clean"],
+    ];
+
+    quillNotes = new Quill("#notes-editor", {
+      theme: "snow",
+      modules: { toolbar: { container: toolbarOptions, handlers: { image: handleNotesImageInsert } } },
+    });
+
+    const toolbarEl = quillNotes.getModule("toolbar").container;
+    toolbarEl.id = "notes-toolbar";
+
+    // 跟行程規劃用同一套「減少縮排時,最外層先變成整排靠齊,而不是直接沒反應」的修正邏輯
+    quillNotes.getModule("toolbar").addHandler("indent", function (value) {
+      const range = this.quill.getSelection();
+      if (!range) return;
+      const lines = this.quill.getLines(range.index, range.length || 1);
+      lines.forEach((line) => {
+        const lineIndex = this.quill.getIndex(line);
+        const format = this.quill.getFormat(lineIndex, 1);
+        const currentIndent = parseInt(format.indent || 0, 10);
+
+        if (value === "-1" && currentIndent <= 0 && format.list) {
+          if (!format.listFlush) {
+            this.quill.formatLine(lineIndex, 1, "listFlush", "1", "user");
+          }
+          return;
+        }
+        if (value === "+1" && format.listFlush) {
+          this.quill.formatLine(lineIndex, 1, "listFlush", false, "user");
+          return;
+        }
+        const modifier = value === "+1" ? 1 : -1;
+        const nextIndent = Math.max(0, currentIndent + modifier);
+        this.quill.formatLine(lineIndex, 1, "indent", nextIndent === 0 ? false : nextIndent, "user");
+      });
+    });
+
+    // 復原/恢復復原按鈕,直接用 Quill 內建的 history 模組(沒有行程表格卡片那種額外的復原來源要判斷,比行程規劃簡單)
+    const undoBtn = document.createElement("button");
+    undoBtn.type = "button";
+    undoBtn.id = "notes-undo-btn";
+    undoBtn.textContent = "↶";
+    undoBtn.title = "復原上一步";
+    undoBtn.addEventListener("click", () => quillNotes.history.undo());
+    toolbarEl.appendChild(undoBtn);
+
+    const redoBtn = document.createElement("button");
+    redoBtn.type = "button";
+    redoBtn.id = "notes-redo-btn";
+    redoBtn.textContent = "↷";
+    redoBtn.title = "恢復復原";
+    redoBtn.addEventListener("click", () => quillNotes.history.redo());
+    toolbarEl.appendChild(redoBtn);
+
+    // 貼上圖片直接上傳到 Drive 再插入,而不是把圖片整個以 base64 塞進內文(那樣會很快就把
+    // 資料庫欄位塞爆,見下面 saveTripNotes 的大小檢查)
+    quillNotes.root.addEventListener("paste", (e) => {
+      const items = Array.from(e.clipboardData?.items || []);
+      const imageItem = items.find((item) => item.type && item.type.startsWith("image/"));
+      if (!imageItem) return;
+      e.preventDefault();
+      const file = imageItem.getAsFile();
+      if (!file || !currentTripId) return;
+      const range = quillNotes.getSelection(true) || { index: quillNotes.getLength() };
+      uploadAndInsertItineraryImage(file, range.index, quillNotes).catch((err) => {
+        alert("圖片上傳失敗:" + err.message);
+      });
+    });
+
+    quillNotes.root.addEventListener("drop", (e) => {
+      const file = Array.from(e.dataTransfer?.files || []).find((f) => f.type && f.type.startsWith("image/"));
+      if (!file || !currentTripId) return;
+      e.preventDefault();
+      const range = quillNotes.getSelection(true) || { index: quillNotes.getLength() };
+      uploadAndInsertItineraryImage(file, range.index, quillNotes).catch((err) => {
+        alert("圖片上傳失敗:" + err.message);
+      });
+    });
+
+    quillNotes.on("text-change", (delta, oldDelta, source) => {
+      if (source === "user") scheduleTripNotesAutoSave();
+    });
+
+    quillNotes.enable(false); // 預設先進入預覽(唯讀)模式,點兩下分頁按鈕才會進入編輯模式
+  }
+
   // ---------- 行程內文裡插入的圖片:編輯模式下可以點選圖片、拖曳右下角控點自由放大縮小 ----------
   function initItineraryImageResize() {
     const handle = document.createElement("div");
@@ -1620,8 +1744,9 @@
     if (e.target.id === "bm-picker-overlay") document.getElementById("bm-picker-overlay").style.display = "none";
   });
 
-  // 把圖片檔案上傳到 Drive,並插入到目前游標位置(插入圖片按鈕、貼上圖片、拖曳圖片都共用這個)
-  async function uploadAndInsertItineraryImage(file, index) {
+  // 把圖片檔案上傳到 Drive,並插入到目前游標位置(插入圖片按鈕、貼上圖片、拖曳圖片都共用這個)。
+  // quill 參數指定要插入到哪一個 Quill 編輯器實體(行程規劃、注意事項各自有自己的編輯器)。
+  async function uploadAndInsertItineraryImage(file, index, quill) {
     const initData = await apiFetch(`/api/trips/${currentTripId}/media/upload-init`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1646,8 +1771,8 @@
       alert("圖片已上傳,但沒有取得可用的圖片網址,請重新整理頁面後再試一次。");
       return;
     }
-    quillItinerary.insertEmbed(index, "image", imgUrl);
-    quillItinerary.setSelection(index + 1);
+    quill.insertEmbed(index, "image", imgUrl);
+    quill.setSelection(index + 1);
   }
 
   async function handleItineraryImageInsert() {
@@ -1666,7 +1791,29 @@
       const file = input.files[0];
       if (!file) return;
       try {
-        await uploadAndInsertItineraryImage(file, insertIndex);
+        await uploadAndInsertItineraryImage(file, insertIndex, quillItinerary);
+      } catch (err) {
+        alert("圖片上傳失敗:" + err.message);
+      }
+    };
+    input.click();
+  }
+
+  // 「注意事項」編輯器的插入圖片按鈕,邏輯跟行程規劃的插入圖片完全一樣,
+  // 只是插入的目標換成 quillNotes,共用同一套上傳/插入函式(uploadAndInsertItineraryImage)。
+  async function handleNotesImageInsert() {
+    if (!currentTripId) { alert("請先開啟一個行程"); return; }
+    const range = quillNotes.getSelection(true) || { index: quillNotes.getLength() };
+    const insertIndex = range.index;
+
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.onchange = async () => {
+      const file = input.files[0];
+      if (!file) return;
+      try {
+        await uploadAndInsertItineraryImage(file, insertIndex, quillNotes);
       } catch (err) {
         alert("圖片上傳失敗:" + err.message);
       }
@@ -1685,6 +1832,7 @@
     });
     google.accounts.id.renderButton(document.getElementById("g_id_signin"), { theme: "outline", size: "large", text: "signin_with" });
     initQuillItinerary();
+    initQuillNotes();
     checkInAppBrowserWarning();
   }
 
@@ -3113,17 +3261,27 @@
   // 現在的行程規劃已經改用 itinerary_days/itinerary_cards 這兩張表按天存了,原本這欄位閒置沒在用,
   // 剛好拿來存注意事項,不用另外新增資料表或欄位) ----
   let tripNotesAutoSaveTimer = null;
+  let tripNotesMode = "preview"; // "preview":唯讀,只能看  "edit":可以編輯,跟行程規劃的每日分頁是同一套邏輯
 
   async function saveTripNotes() {
-    if (!currentTripId) return;
+    if (!currentTripId || !quillNotes) return;
     const statusEl = document.getElementById("trip-notes-status");
-    const text = document.getElementById("trip-notes-textarea").value;
+    const html = quillNotes.root.innerHTML;
+
+    // 跟行程規劃的每日內容一樣,資料庫單一欄位有上限,提早檢查給明確提示
+    const sizeInBytes = new Blob([html]).size;
+    const SAFE_LIMIT = 1.8 * 1024 * 1024;
+    if (sizeInBytes > SAFE_LIMIT) {
+      statusEl.textContent = `儲存失敗:內容太大(約 ${(sizeInBytes / 1024 / 1024).toFixed(1)}MB)。通常是有圖片被直接嵌入內容裡(而不是用連結),請找出來刪除,改用「插入圖片」按鈕重新加入。`;
+      return;
+    }
+
     statusEl.textContent = "儲存中...";
     try {
       await apiFetch(`/api/trips/${currentTripId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ itinerary: text }),
+        body: JSON.stringify({ itinerary: html }),
       });
       statusEl.textContent = "已儲存";
     } catch (err) {
@@ -3137,7 +3295,39 @@
     tripNotesAutoSaveTimer = setTimeout(saveTripNotes, 1500);
   }
 
-  document.getElementById("trip-notes-textarea").addEventListener("input", scheduleTripNotesAutoSave);
+  // 套用目前的預覽/編輯模式:編輯模式才顯示工具列、才能真的打字進去,
+  // 分頁按鈕文字也跟著加上 (預)/(編) 後綴,提示使用者目前是哪個模式。
+  function applyTripNotesMode() {
+    const isEdit = tripNotesMode === "edit";
+    const toolbarEl = document.getElementById("notes-toolbar");
+    if (toolbarEl) toolbarEl.style.display = isEdit ? "" : "none";
+    if (quillNotes) quillNotes.enable(isEdit);
+    const notesBtn = document.querySelector('#trip-sub-nav button[data-sub="notes"]');
+    if (notesBtn) notesBtn.textContent = "注意事項" + (isEdit ? "(編)" : "(預)");
+  }
+
+  // 「注意事項」分頁的點擊邏輯,跟行程規劃的每日分頁、航班/住宿資訊分頁是同一套設計:
+  // 第一次點進來(從別的分頁切過來)一律先進入預覽模式;已經在這一頁時再點一次,
+  // 才是真正切換預覽/編輯,而不是重新整理內容(避免打到一半的東西被蓋掉)。
+  function handleNotesTabClick() {
+    const wasActive = document.getElementById("trip-sub-notes").classList.contains("active");
+    if (wasActive) {
+      if (tripNotesMode === "edit") {
+        // 準備離開編輯模式,強制立即存檔,不要用會延遲 1.5 秒的自動存檔
+        clearTimeout(tripNotesAutoSaveTimer);
+        saveTripNotes();
+        tripNotesMode = "preview";
+      } else {
+        tripNotesMode = "edit";
+      }
+      applyTripNotesMode();
+    } else {
+      switchTripSubview("notes");
+      tripNotesMode = "preview";
+      applyTripNotesMode();
+    }
+  }
+
   const loadedSubviews = new Set();
 
   function switchTripSubview(name) {
@@ -3146,13 +3336,28 @@
     document.querySelectorAll("#trip-sub-nav button[data-sub]").forEach((b) => {
       b.classList.toggle("active", b.dataset.sub === name);
     });
+    if (name !== "notes") {
+      // 離開注意事項分頁,重置成預覽模式跟按鈕文字,下次點進來一律先看預覽,不要停在編輯模式
+      tripNotesMode = "preview";
+      const notesBtn = document.querySelector('#trip-sub-nav button[data-sub="notes"]');
+      if (notesBtn) notesBtn.textContent = "注意事項";
+      if (quillNotes) quillNotes.enable(false);
+      const toolbarEl = document.getElementById("notes-toolbar");
+      if (toolbarEl) toolbarEl.style.display = "none";
+    }
     if (!loadedSubviews.has(name)) {
       loadedSubviews.add(name);
       tripSubLoaders[name]();
     }
   }
   document.querySelectorAll("#trip-sub-nav button[data-sub]").forEach((btn) => {
-    btn.addEventListener("click", () => switchTripSubview(btn.dataset.sub));
+    btn.addEventListener("click", () => {
+      if (btn.dataset.sub === "notes") {
+        handleNotesTabClick();
+      } else {
+        switchTripSubview(btn.dataset.sub);
+      }
+    });
   });
 
   async function openTrip(tripId) {
@@ -3166,9 +3371,16 @@
     document.getElementById("detail-sub").textContent = t.date_end ? `${t.date_start} ~ ${t.date_end}` : t.date_start;
     currentTripTitle = `${t.country}_${t.location}`.replace(/[\\/:*?"<>|]/g, "");
 
-    document.getElementById("trip-notes-textarea").value = t.itinerary || "";
+    const notesContent = t.itinerary || "";
+    if (notesContent && notesContent.includes("<")) {
+      quillNotes.root.innerHTML = notesContent;
+    } else {
+      quillNotes.setText(notesContent || "");
+    }
     document.getElementById("trip-notes-status").textContent = "";
     clearTimeout(tripNotesAutoSaveTimer);
+    tripNotesMode = "preview";
+    applyTripNotesMode();
 
     const days = computeDateRange(t.date_start, t.date_end);
     renderDayTabs(days);
