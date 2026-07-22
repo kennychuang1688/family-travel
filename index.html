@@ -559,6 +559,7 @@
       <button data-sub="media">照片 / 影片</button>
       <button data-sub="expenses">費用花費</button>
       <button data-sub="documents">其他文件</button>
+      <button data-sub="notes">注意事項</button>
     </div>
 
     <div id="trip-sub-itinerary" class="trip-subview active">
@@ -770,6 +771,17 @@
           <tbody id="documents-tbody"></tbody>
         </table>
         <div class="empty" id="documents-empty" style="display:none;">還沒有上傳文件。</div>
+      </div>
+    </div>
+
+    <div id="trip-sub-notes" class="trip-subview">
+      <div class="panel">
+        <h2>注意事項</h2>
+        <div class="status-line" style="margin-bottom:10px;">可以記錄集合時間、行李限重、緊急聯絡電話、天氣提醒等,系統會自動儲存。</div>
+        <textarea id="trip-notes-textarea" placeholder="例如:&#10;・集合時間:8:00 於機場第一航廈&#10;・行李限重:每人 20kg&#10;・緊急聯絡電話:xxx-xxx-xxx" style="width:100%; min-height:320px; padding:14px; font-size:15px; line-height:1.8; border:1px solid var(--line); border-radius:10px; resize:vertical; font-family:inherit; box-sizing:border-box;"></textarea>
+        <div class="form-actions" style="margin-top:10px;">
+          <span class="status-line" id="trip-notes-status"></span>
+        </div>
       </div>
     </div>
   </div>
@@ -3094,7 +3106,38 @@
     media: loadMedia,
     expenses: async () => { await loadExchangeRates(); await loadExpenses(); },
     documents: loadDocuments,
+    notes: async () => {}, // 跟行程規劃一樣,開啟行程時已經帶入,不用另外載入
   };
+
+  // ---- 注意事項(重複使用 trips.itinerary 這個欄位存放,這欄位是舊版「單一行程文字」留下來的,
+  // 現在的行程規劃已經改用 itinerary_days/itinerary_cards 這兩張表按天存了,原本這欄位閒置沒在用,
+  // 剛好拿來存注意事項,不用另外新增資料表或欄位) ----
+  let tripNotesAutoSaveTimer = null;
+
+  async function saveTripNotes() {
+    if (!currentTripId) return;
+    const statusEl = document.getElementById("trip-notes-status");
+    const text = document.getElementById("trip-notes-textarea").value;
+    statusEl.textContent = "儲存中...";
+    try {
+      await apiFetch(`/api/trips/${currentTripId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itinerary: text }),
+      });
+      statusEl.textContent = "已儲存";
+    } catch (err) {
+      statusEl.textContent = "儲存失敗:" + err.message;
+    }
+  }
+
+  function scheduleTripNotesAutoSave() {
+    document.getElementById("trip-notes-status").textContent = "編輯中...";
+    clearTimeout(tripNotesAutoSaveTimer);
+    tripNotesAutoSaveTimer = setTimeout(saveTripNotes, 1500);
+  }
+
+  document.getElementById("trip-notes-textarea").addEventListener("input", scheduleTripNotesAutoSave);
   const loadedSubviews = new Set();
 
   function switchTripSubview(name) {
@@ -3122,6 +3165,10 @@
     document.getElementById("detail-title").textContent = `${t.country} · ${t.location}`;
     document.getElementById("detail-sub").textContent = t.date_end ? `${t.date_start} ~ ${t.date_end}` : t.date_start;
     currentTripTitle = `${t.country}_${t.location}`.replace(/[\\/:*?"<>|]/g, "");
+
+    document.getElementById("trip-notes-textarea").value = t.itinerary || "";
+    document.getElementById("trip-notes-status").textContent = "";
+    clearTimeout(tripNotesAutoSaveTimer);
 
     const days = computeDateRange(t.date_start, t.date_end);
     renderDayTabs(days);
