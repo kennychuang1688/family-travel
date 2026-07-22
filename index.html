@@ -204,34 +204,40 @@
   .media-actions { display: flex; gap: 8px; margin-top: 4px; }
   .media-actions a, .media-actions button { font-size: 11px; }
 
-  .checklist-item { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
-  .checklist-item input[type=checkbox] { width: 18px; height: 18px; }
-  .checklist-item.done span { text-decoration: line-through; opacity: 0.5; }
-  .checklist-item span { flex: 1; font-size: 14px; }
+  /* Layer 1:「行李清單」「旅遊期間」是最外層的分類,用比較粗、比較大的標題 + 底線做出「最上層」的份量感 */
+  .checklist-layer1-title {
+    font-family: Georgia, 'Noto Serif TC', serif; color: var(--gold); font-weight: 600;
+    font-size: 17px; margin: 0 0 14px; padding-bottom: 8px; border-bottom: 2px solid var(--gold);
+  }
 
-  /* 行李清單:每一列可以放 3 筆項目(桌機),螢幕較窄時逐步收成 2 欄、1 欄 */
-  .checklist-item-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 16px; }
-  @media (max-width: 900px) {
+  /* Layer 2:「隨身行李」「托運行李」巢狀在 Layer 1 裡面,用淺色底的區塊包起來,
+     讓畫面上看得出「這些項目是被包在上面那層底下」的層級關係,而不是跟 Layer 1 平起平坐 */
+  .checklist-layer2-group { background: var(--bg-softer); border-radius: 10px; padding: 14px 16px; margin-bottom: 16px; }
+  .checklist-layer2-group:last-child { margin-bottom: 0; }
+  .checklist-bag-group-label {
+    font-family: Georgia, 'Noto Serif TC', serif; color: var(--gold); font-weight: 600;
+    font-size: 13px; margin: 0 0 10px; padding-left: 10px; border-left: 3px solid var(--gold);
+  }
+
+  /* 行李清單、旅遊期間都用同一套卡片式格線呈現,每一列放 4 筆(桌機),
+     螢幕較窄時逐步收成 3 欄、2 欄、1 欄 */
+  .checklist-item-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 16px; }
+  @media (max-width: 1100px) {
+    .checklist-item-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
+  @media (max-width: 800px) {
     .checklist-item-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
-  @media (max-width: 600px) {
+  @media (max-width: 500px) {
     .checklist-item-grid { grid-template-columns: 1fr; }
-  }
-  .checklist-bag-group-label {
-    font-family: Georgia, 'Noto Serif TC', serif; color: var(--gold); font-weight: normal;
-    font-size: 13px; opacity: 0.85; margin: 4px 0 8px;
   }
   .checklist-item-card {
     display: flex; align-items: center; gap: 8px; padding: 8px 10px;
-    border: 1px solid var(--line); border-radius: 8px;
+    border: 1px solid var(--line); border-radius: 8px; background: var(--paper);
   }
   .checklist-item-card input[type=checkbox] { width: 18px; height: 18px; flex: 0 0 auto; }
   .checklist-item-card span.checklist-item-text { flex: 1; font-size: 14px; min-width: 0; }
   .checklist-item-card.done span.checklist-item-text { text-decoration: line-through; opacity: 0.5; }
-  .checklist-bagtype-tag {
-    flex: 0 0 auto; font-size: 11px; padding: 2px 7px; border-radius: 6px;
-    background: var(--bg-softer); color: var(--gold); white-space: nowrap;
-  }
 
   .progress-wrap { flex: 1 1 200px; height: 8px; background: rgba(59,42,33,0.1); border-radius: 4px; overflow: hidden; }
   .progress-bar { height: 100%; width: 0%; background: var(--teal); transition: width 0.15s ease; }
@@ -831,7 +837,7 @@
   <!-- 待辦事項 -->
   <div id="view-checklist" class="view">
     <div class="panel">
-      <h3 style="font-family: Georgia, 'Noto Serif TC', serif; color: var(--gold); font-weight: normal; font-size: 15px; margin: 0 0 10px;">行李清單</h3>
+      <h3 class="checklist-layer1-title">行李清單</h3>
       <div style="display:flex; gap:10px; margin-bottom:8px; flex-wrap:wrap;">
         <select id="checklist-bagtype-before">
           <option value="隨身行李">隨身行李</option>
@@ -844,13 +850,13 @@
       <div id="checklist-list-before"></div>
       <div class="empty" id="checklist-empty-before" style="display:none;">目前沒有「行李清單」項目。</div>
 
-      <h3 style="font-family: Georgia, 'Noto Serif TC', serif; color: var(--gold); font-weight: normal; font-size: 15px; margin: 28px 0 10px; padding-top: 20px; border-top: 1px solid var(--line);">旅遊期間</h3>
+      <h3 class="checklist-layer1-title" style="margin-top:28px; padding-top:20px; border-top-width:1px; border-top-color:var(--line); border-top-style:solid;">旅遊期間</h3>
       <div style="display:flex; gap:10px; margin-bottom:8px;">
         <input type="text" id="checklist-input-during" placeholder="新增待辦事項..." style="flex:1;" />
         <button class="primary" id="checklist-add-btn-during">新增</button>
       </div>
       <div class="status-line" style="margin-bottom:16px;">提示:可用逗號分隔一次新增多筆</div>
-      <div id="checklist-list-during"></div>
+      <div id="checklist-list-during" class="checklist-item-grid"></div>
       <div class="empty" id="checklist-empty-during" style="display:none;">目前沒有「旅遊期間」待辦事項。</div>
     </div>
   </div>
@@ -3391,6 +3397,26 @@
     loadedSubviews.clear();
     selectedMediaIds.clear();
     mediaBatchEditMode = false;
+
+    // 先清空上一個行程可能留下的畫面內容、立刻切換到行程詳細頁,不要等資料通通載入完成才切換——
+    // 不然畫面會卡在原地一小段時間才跳轉,使用者點下去會覺得「頓一下才進去」。
+    // 之後每一段資料回來,再分別把畫面上對應的部分更新掉就好。
+    document.getElementById("detail-title").textContent = "載入中...";
+    document.getElementById("detail-sub").textContent = "";
+    itineraryDayContents = {};
+    currentItineraryDate = null;
+    document.getElementById("itinerary-day-tabs").innerHTML = "";
+    quillItinerary.setText("");
+    quillNotes.setText("");
+    document.getElementById("trip-notes-status").textContent = "";
+    clearTimeout(tripNotesAutoSaveTimer);
+    tripNotesMode = "preview";
+    applyTripNotesMode();
+
+    document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
+    document.getElementById("view-trip-detail").classList.add("active");
+    switchTripSubview("itinerary");
+
     const data = await apiFetch(`/api/trips/${tripId}`);
     const t = data.trip;
     document.getElementById("detail-title").textContent = `${t.country} · ${t.location}`;
@@ -3403,16 +3429,10 @@
     } else {
       quillNotes.setText(notesContent || "");
     }
-    document.getElementById("trip-notes-status").textContent = "";
-    clearTimeout(tripNotesAutoSaveTimer);
-    tripNotesMode = "preview";
-    applyTripNotesMode();
 
     const days = computeDateRange(t.date_start, t.date_end);
     renderDayTabs(days);
 
-    itineraryDayContents = {};
-    currentItineraryDate = null;
     try {
       const idata = await apiFetch(`/api/trips/${tripId}/itinerary-days`);
       for (const row of idata.days || []) {
@@ -3422,11 +3442,6 @@
 
     if (days.length > 0) await switchItineraryDay(days[0]);
     document.getElementById("itinerary-status").textContent = "";
-
-    document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
-    document.getElementById("view-trip-detail").classList.add("active");
-
-    switchTripSubview("itinerary");
   }
 
   // ---------- 匯出 Word 檔(整合所有天數的行程規劃) ----------
@@ -4317,12 +4332,11 @@
   });
 
   // ---------- 待辦事項 ----------
-  // 「行李清單」(phase = before)項目用卡片式呈現(每列 2 個 + 托運/隨身標籤),
-  // 「旅遊期間」(phase = during)項目維持原本單欄清單,因為沒有行李分類的概念。
+  // 「行李清單」「旅遊期間」現在都用同一套卡片式格線呈現(每列 4 個),
+  // 差別只在於「行李清單」的項目還會依托運/隨身分成兩個 Layer 2 區塊,「旅遊期間」沒有這層分類。
   function renderChecklistRow(item) {
-    const isBefore = item.phase !== "during";
     const row = document.createElement("div");
-    row.className = (isBefore ? "checklist-item-card" : "checklist-item") + (item.done ? " done" : "");
+    row.className = "checklist-item-card" + (item.done ? " done" : "");
     row.dataset.id = item.id;
 
     const checkbox = document.createElement("input");
@@ -4345,17 +4359,12 @@
 
     const span = document.createElement("span");
     span.textContent = item.text;
-    if (isBefore) span.className = "checklist-item-text";
+    span.className = "checklist-item-text";
 
     row.appendChild(checkbox);
     row.appendChild(span);
-
-    if (isBefore && item.bag_type) {
-      const tag = document.createElement("span");
-      tag.className = "checklist-bagtype-tag";
-      tag.textContent = item.bag_type;
-      row.appendChild(tag);
-    }
+    // 注意:不在這裡顯示托運/隨身的標籤了——項目現在已經被分區顯示在「隨身行李」「托運行李」
+    // 各自的標題底下,每一列再重複貼一次同樣的標籤只是多餘的視覺雜訊。
 
     const deleteBtn = document.createElement("button");
     deleteBtn.className = "danger";
@@ -4363,7 +4372,7 @@
     deleteBtn.addEventListener("click", async () => {
       try {
         await apiFetch(`/api/checklist/${item.id}`, { method: "DELETE" });
-        if (isBefore) {
+        if (item.phase !== "during") {
           // 「行李清單」有分區(隨身/托運),刪除後直接整個重新載入、重新分區比較簡單可靠,
           // 不用自己判斷「這一區還剩幾筆、標題該不該繼續顯示」這種細節。
           await loadChecklist();
@@ -4381,18 +4390,23 @@
     return row;
   }
 
-  // 在 container 裡加上一個分區:如果這一區沒有項目就整個跳過不顯示(不留一個空空的標題)。
+  // 在 container 裡加上一個 Layer 2 分區(淺色底的巢狀區塊):如果這一區沒有項目就整個跳過不顯示。
   function renderChecklistGroup(container, label, items) {
     if (items.length === 0) return;
+    const group = document.createElement("div");
+    group.className = "checklist-layer2-group";
+
     const heading = document.createElement("div");
     heading.className = "checklist-bag-group-label";
     heading.textContent = label;
-    container.appendChild(heading);
+    group.appendChild(heading);
 
     const grid = document.createElement("div");
     grid.className = "checklist-item-grid";
     for (const item of items) grid.appendChild(renderChecklistRow(item));
-    container.appendChild(grid);
+    group.appendChild(grid);
+
+    container.appendChild(group);
   }
 
   async function loadChecklist() {
