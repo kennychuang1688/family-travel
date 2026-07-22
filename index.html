@@ -209,10 +209,17 @@
   .checklist-item.done span { text-decoration: line-through; opacity: 0.5; }
   .checklist-item span { flex: 1; font-size: 14px; }
 
-  /* 行李清單:每一列可以放 2 筆項目(桌機),手機螢幕較窄時自動收成 1 欄 */
-  .checklist-item-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; }
+  /* 行李清單:每一列可以放 3 筆項目(桌機),螢幕較窄時逐步收成 2 欄、1 欄 */
+  .checklist-item-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 16px; }
+  @media (max-width: 900px) {
+    .checklist-item-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
   @media (max-width: 600px) {
     .checklist-item-grid { grid-template-columns: 1fr; }
+  }
+  .checklist-bag-group-label {
+    font-family: Georgia, 'Noto Serif TC', serif; color: var(--gold); font-weight: normal;
+    font-size: 13px; opacity: 0.85; margin: 4px 0 8px;
   }
   .checklist-item-card {
     display: flex; align-items: center; gap: 8px; padding: 8px 10px;
@@ -826,15 +833,15 @@
     <div class="panel">
       <h3 style="font-family: Georgia, 'Noto Serif TC', serif; color: var(--gold); font-weight: normal; font-size: 15px; margin: 0 0 10px;">行李清單</h3>
       <div style="display:flex; gap:10px; margin-bottom:8px; flex-wrap:wrap;">
-        <input type="text" id="checklist-input-before" placeholder="新增待辦事項..." style="flex:1; min-width:160px;" />
         <select id="checklist-bagtype-before">
-          <option value="托運行李">托運行李</option>
           <option value="隨身行李">隨身行李</option>
+          <option value="托運行李">托運行李</option>
         </select>
+        <input type="text" id="checklist-input-before" placeholder="新增待辦事項..." style="flex:1; min-width:160px;" />
         <button class="primary" id="checklist-add-btn-before">新增</button>
       </div>
       <div class="status-line" style="margin-bottom:16px;">提示:可用逗號分隔一次新增多筆,例如「充電器,牙刷,睡衣」會分成三筆待辦事項</div>
-      <div id="checklist-list-before" class="checklist-item-grid"></div>
+      <div id="checklist-list-before"></div>
       <div class="empty" id="checklist-empty-before" style="display:none;">目前沒有「行李清單」項目。</div>
 
       <h3 style="font-family: Georgia, 'Noto Serif TC', serif; color: var(--gold); font-weight: normal; font-size: 15px; margin: 28px 0 10px; padding-top: 20px; border-top: 1px solid var(--line);">旅遊期間</h3>
@@ -4356,10 +4363,15 @@
     deleteBtn.addEventListener("click", async () => {
       try {
         await apiFetch(`/api/checklist/${item.id}`, { method: "DELETE" });
-        row.remove();
-        const phase = item.phase === "during" ? "during" : "before";
-        const list = document.getElementById(`checklist-list-${phase}`);
-        document.getElementById(`checklist-empty-${phase}`).style.display = list.children.length === 0 ? "block" : "none";
+        if (isBefore) {
+          // 「行李清單」有分區(隨身/托運),刪除後直接整個重新載入、重新分區比較簡單可靠,
+          // 不用自己判斷「這一區還剩幾筆、標題該不該繼續顯示」這種細節。
+          await loadChecklist();
+        } else {
+          row.remove();
+          const list = document.getElementById("checklist-list-during");
+          document.getElementById("checklist-empty-during").style.display = list.children.length === 0 ? "block" : "none";
+        }
       } catch (err) {
         alert("移除失敗:" + err.message);
       }
@@ -4367,6 +4379,20 @@
 
     row.appendChild(deleteBtn);
     return row;
+  }
+
+  // 在 container 裡加上一個分區:如果這一區沒有項目就整個跳過不顯示(不留一個空空的標題)。
+  function renderChecklistGroup(container, label, items) {
+    if (items.length === 0) return;
+    const heading = document.createElement("div");
+    heading.className = "checklist-bag-group-label";
+    heading.textContent = label;
+    container.appendChild(heading);
+
+    const grid = document.createElement("div");
+    grid.className = "checklist-item-grid";
+    for (const item of items) grid.appendChild(renderChecklistRow(item));
+    container.appendChild(grid);
   }
 
   async function loadChecklist() {
@@ -4384,7 +4410,14 @@
 
     emptyBefore.style.display = beforeItems.length === 0 ? "block" : "none";
     emptyDuring.style.display = duringItems.length === 0 ? "block" : "none";
-    for (const item of beforeItems) listBefore.appendChild(renderChecklistRow(item));
+
+    // 「行李清單」依「隨身行李」「托運行李」分區顯示,隨身行李放上面、托運行李放下面;
+    // 沒有標記分類的舊資料(bag_type 是空的)就歸進「托運行李」這一區當作預設值。
+    const carryOnItems = beforeItems.filter((i) => i.bag_type === "隨身行李");
+    const checkedItems = beforeItems.filter((i) => i.bag_type !== "隨身行李");
+    renderChecklistGroup(listBefore, "隨身行李", carryOnItems);
+    renderChecklistGroup(listBefore, "托運行李", checkedItems);
+
     for (const item of duringItems) listDuring.appendChild(renderChecklistRow(item));
   }
 
@@ -4408,13 +4441,20 @@
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ text, phase, bagType }),
           });
-          list.appendChild(renderChecklistRow({ id: result.id, text, done: 0, phase, bag_type: bagType }));
+          if (!bagTypeSelect) {
+            // 「旅遊期間」沒有分區,維持原本輕量的作法,直接插入畫面就好
+            list.appendChild(renderChecklistRow({ id: result.id, text, done: 0, phase }));
+          }
         } catch (err) {
           alert(`新增「${text}」失敗:` + err.message);
         }
       }
-      emptyEl.style.display = list.children.length === 0 ? "block" : "none";
       input.value = "";
+      if (bagTypeSelect) {
+        await loadChecklist(); // 「行李清單」有分區,新增後整批重新載入、重新分區比較簡單可靠
+      } else {
+        emptyEl.style.display = list.children.length === 0 ? "block" : "none";
+      }
     });
     input.addEventListener("keydown", (e) => {
       if (e.key === "Enter") addBtn.click();
