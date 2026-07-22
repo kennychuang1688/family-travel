@@ -209,6 +209,23 @@
   .checklist-item.done span { text-decoration: line-through; opacity: 0.5; }
   .checklist-item span { flex: 1; font-size: 14px; }
 
+  /* 行李清單:每一列可以放 2 筆項目(桌機),手機螢幕較窄時自動收成 1 欄 */
+  .checklist-item-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; }
+  @media (max-width: 600px) {
+    .checklist-item-grid { grid-template-columns: 1fr; }
+  }
+  .checklist-item-card {
+    display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+    border: 1px solid var(--line); border-radius: 8px;
+  }
+  .checklist-item-card input[type=checkbox] { width: 18px; height: 18px; flex: 0 0 auto; }
+  .checklist-item-card span.checklist-item-text { flex: 1; font-size: 14px; min-width: 0; }
+  .checklist-item-card.done span.checklist-item-text { text-decoration: line-through; opacity: 0.5; }
+  .checklist-bagtype-tag {
+    flex: 0 0 auto; font-size: 11px; padding: 2px 7px; border-radius: 6px;
+    background: var(--bg-softer); color: var(--gold); white-space: nowrap;
+  }
+
   .progress-wrap { flex: 1 1 200px; height: 8px; background: rgba(59,42,33,0.1); border-radius: 4px; overflow: hidden; }
   .progress-bar { height: 100%; width: 0%; background: var(--teal); transition: width 0.15s ease; }
   .status-line { font-size: 12px; color: rgba(59,42,33,0.6); margin-top: 8px; min-height: 16px; }
@@ -506,7 +523,7 @@
   </div>
   <nav id="main-nav" style="display:none;">
     <button data-view="trips" class="active">旅遊行程</button>
-    <button data-view="checklist">待辦事項</button>
+    <button data-view="checklist">事項清單</button>
     <button data-view="logs" id="nav-logs" style="display:none;">Log</button>
   </nav>
   <div id="user-box" style="display:none;">
@@ -794,7 +811,6 @@
     <div id="trip-sub-notes" class="trip-subview">
       <div class="panel">
         <h2>注意事項</h2>
-        <div class="status-line" style="margin-bottom:10px;">可以記錄集合時間、行李限重、緊急聯絡電話、天氣提醒等,系統會自動儲存。點一下分頁只能預覽,再點一下才能編輯。</div>
         <div id="notes-editor-wrap">
           <div id="notes-editor"></div>
         </div>
@@ -808,15 +824,18 @@
   <!-- 待辦事項 -->
   <div id="view-checklist" class="view">
     <div class="panel">
-      <h2>待辦事項</h2>
-      <h3 style="font-family: Georgia, 'Noto Serif TC', serif; color: var(--gold); font-weight: normal; font-size: 15px; margin: 0 0 10px;">旅遊前</h3>
-      <div style="display:flex; gap:10px; margin-bottom:8px;">
-        <input type="text" id="checklist-input-before" placeholder="新增待辦事項..." style="flex:1;" />
+      <h3 style="font-family: Georgia, 'Noto Serif TC', serif; color: var(--gold); font-weight: normal; font-size: 15px; margin: 0 0 10px;">行李清單</h3>
+      <div style="display:flex; gap:10px; margin-bottom:8px; flex-wrap:wrap;">
+        <input type="text" id="checklist-input-before" placeholder="新增待辦事項..." style="flex:1; min-width:160px;" />
+        <select id="checklist-bagtype-before">
+          <option value="托運行李">托運行李</option>
+          <option value="隨身行李">隨身行李</option>
+        </select>
         <button class="primary" id="checklist-add-btn-before">新增</button>
       </div>
       <div class="status-line" style="margin-bottom:16px;">提示:可用逗號分隔一次新增多筆,例如「充電器,牙刷,睡衣」會分成三筆待辦事項</div>
-      <div id="checklist-list-before"></div>
-      <div class="empty" id="checklist-empty-before" style="display:none;">目前沒有「旅遊前」待辦事項。</div>
+      <div id="checklist-list-before" class="checklist-item-grid"></div>
+      <div class="empty" id="checklist-empty-before" style="display:none;">目前沒有「行李清單」項目。</div>
 
       <h3 style="font-family: Georgia, 'Noto Serif TC', serif; color: var(--gold); font-weight: normal; font-size: 15px; margin: 28px 0 10px; padding-top: 20px; border-top: 1px solid var(--line);">旅遊期間</h3>
       <div style="display:flex; gap:10px; margin-bottom:8px;">
@@ -4291,9 +4310,12 @@
   });
 
   // ---------- 待辦事項 ----------
+  // 「行李清單」(phase = before)項目用卡片式呈現(每列 2 個 + 托運/隨身標籤),
+  // 「旅遊期間」(phase = during)項目維持原本單欄清單,因為沒有行李分類的概念。
   function renderChecklistRow(item) {
+    const isBefore = item.phase !== "during";
     const row = document.createElement("div");
-    row.className = "checklist-item" + (item.done ? " done" : "");
+    row.className = (isBefore ? "checklist-item-card" : "checklist-item") + (item.done ? " done" : "");
     row.dataset.id = item.id;
 
     const checkbox = document.createElement("input");
@@ -4316,6 +4338,17 @@
 
     const span = document.createElement("span");
     span.textContent = item.text;
+    if (isBefore) span.className = "checklist-item-text";
+
+    row.appendChild(checkbox);
+    row.appendChild(span);
+
+    if (isBefore && item.bag_type) {
+      const tag = document.createElement("span");
+      tag.className = "checklist-bagtype-tag";
+      tag.textContent = item.bag_type;
+      row.appendChild(tag);
+    }
 
     const deleteBtn = document.createElement("button");
     deleteBtn.className = "danger";
@@ -4332,8 +4365,6 @@
       }
     });
 
-    row.appendChild(checkbox);
-    row.appendChild(span);
     row.appendChild(deleteBtn);
     return row;
   }
@@ -4362,20 +4393,22 @@
     const addBtn = document.getElementById(`checklist-add-btn-${phase}`);
     const list = document.getElementById(`checklist-list-${phase}`);
     const emptyEl = document.getElementById(`checklist-empty-${phase}`);
+    const bagTypeSelect = document.getElementById(`checklist-bagtype-${phase}`); // 只有「行李清單」(before)這個分類才有
 
     addBtn.addEventListener("click", async () => {
       const raw = input.value.trim();
       if (!raw) return;
-      // 支援用逗號(全形、半形皆可)一次輸入多筆待辦事項
+      const bagType = bagTypeSelect ? bagTypeSelect.value : undefined;
+      // 支援用逗號(全形、半形皆可)一次輸入多筆待辦事項,共用同一個目前選取的托運/隨身行李分類
       const texts = raw.split(/[,,]/).map((s) => s.trim()).filter(Boolean);
       for (const text of texts) {
         try {
           const result = await apiFetch("/api/checklist", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ text, phase }),
+            body: JSON.stringify({ text, phase, bagType }),
           });
-          list.appendChild(renderChecklistRow({ id: result.id, text, done: 0, phase }));
+          list.appendChild(renderChecklistRow({ id: result.id, text, done: 0, phase, bag_type: bagType }));
         } catch (err) {
           alert(`新增「${text}」失敗:` + err.message);
         }
