@@ -866,6 +866,10 @@
   <div id="view-users" class="view">
     <div class="panel">
       <h2>帳號管理(僅管理員可見)</h2>
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px; flex-wrap:wrap;">
+        <button class="ghost" id="user-sync-btn">從白名單匯入原本已有的帳號</button>
+        <span class="status-line" id="user-sync-status"></span>
+      </div>
       <div style="display:flex; gap:10px; margin-bottom:8px; flex-wrap:wrap;">
         <input type="email" id="user-add-email" placeholder="email" style="flex:1; min-width:200px;" />
         <input type="text" id="user-add-name" placeholder="顯示名稱(選填)" style="flex:1; min-width:140px;" />
@@ -4606,6 +4610,18 @@
 
     return tr;
   }
+
+  document.getElementById("user-sync-btn").addEventListener("click", async () => {
+    const statusEl = document.getElementById("user-sync-status");
+    statusEl.textContent = "匯入中...";
+    try {
+      const result = await apiFetch("/api/users/sync-from-secrets", { method: "POST" });
+      statusEl.textContent = `完成:白名單共 ${result.total} 個帳號,這次新增了 ${result.inserted} 個(已經在列表裡的不會被覆蓋)。`;
+      await loadUsers();
+    } catch (err) {
+      statusEl.textContent = "匯入失敗:" + err.message;
+    }
+  });
 
   document.getElementById("user-add-btn").addEventListener("click", async () => {
     const emailInput = document.getElementById("user-add-email");
