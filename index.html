@@ -537,6 +537,7 @@
   <nav id="main-nav" style="display:none;">
     <button data-view="trips" class="active">旅遊行程</button>
     <button data-view="checklist">事項清單</button>
+    <button data-view="users" id="nav-users" style="display:none;">帳號管理</button>
     <button data-view="logs" id="nav-logs" style="display:none;">Log</button>
   </nav>
   <div id="user-box" style="display:none;">
@@ -858,6 +859,32 @@
       <div class="status-line" style="margin-bottom:16px;">提示:可用逗號分隔一次新增多筆</div>
       <div id="checklist-list-during" class="checklist-item-grid"></div>
       <div class="empty" id="checklist-empty-during" style="display:none;">目前沒有「旅遊期間」待辦事項。</div>
+    </div>
+  </div>
+
+  <!-- 帳號管理(管理員) -->
+  <div id="view-users" class="view">
+    <div class="panel">
+      <h2>帳號管理(僅管理員可見)</h2>
+      <div style="display:flex; gap:10px; margin-bottom:8px; flex-wrap:wrap;">
+        <input type="email" id="user-add-email" placeholder="email" style="flex:1; min-width:200px;" />
+        <input type="text" id="user-add-name" placeholder="顯示名稱(選填)" style="flex:1; min-width:140px;" />
+        <select id="user-add-role">
+          <option value="member">一般成員</option>
+          <option value="admin">管理員</option>
+        </select>
+        <button class="primary" id="user-add-btn">新增</button>
+      </div>
+      <div class="status-line" id="user-add-status" style="margin-bottom:16px;"></div>
+      <table>
+        <thead><tr><th>Email</th><th>顯示名稱</th><th>權限</th><th>新增時間</th><th>操作</th></tr></thead>
+        <tbody id="users-tbody"></tbody>
+      </table>
+      <div class="empty" id="users-empty" style="display:none;">目前沒有透過這個介面新增的帳號。</div>
+      <div class="status-line" style="margin-top:14px;">
+        提醒:這裡管理的帳號跟原本透過 wrangler secret 設定的 WHITELIST_EMAILS / ADMIN_EMAILS 白名單是「並存」的關係——
+        如果家人是用舊方式加進白名單的,不會自動出現在這個列表裡,需要在這裡重新加一次,才能一起被管理、看到完整名單。
+      </div>
     </div>
   </div>
 
@@ -1972,7 +1999,10 @@
       document.getElementById("main-nav").style.display = "flex";
       document.getElementById("user-box").style.display = "flex";
       document.getElementById("user-name").textContent = data.name || data.email;
-      if (userIsAdmin) document.getElementById("nav-logs").style.display = "inline-block";
+      if (userIsAdmin) {
+        document.getElementById("nav-logs").style.display = "inline-block";
+        document.getElementById("nav-users").style.display = "inline-block";
+      }
 
       const payload = JSON.parse(atob(idToken.split(".")[1]));
       document.getElementById("user-avatar").src = payload.picture || "";
@@ -1998,6 +2028,7 @@
     });
     if (name === "trips") loadTrips();
     if (name === "checklist") loadChecklist();
+    if (name === "users") loadUsers();
     if (name === "logs") loadLogs();
   }
   document.querySelectorAll("#main-nav button[data-view]").forEach((btn) => {
@@ -4476,6 +4507,130 @@
   }
   setupChecklistAdder("before");
   setupChecklistAdder("during");
+
+  // ---------- 帳號管理 ----------
+  async function loadUsers() {
+    const tbody = document.getElementById("users-tbody");
+    const emptyEl = document.getElementById("users-empty");
+    tbody.innerHTML = "";
+    try {
+      const data = await apiFetch("/api/users");
+      const users = data.users || [];
+      emptyEl.style.display = users.length === 0 ? "block" : "none";
+      for (const u of users) tbody.appendChild(renderUserRow(u));
+    } catch (err) {
+      emptyEl.style.display = "block";
+      emptyEl.textContent = "無法載入帳號列表:" + err.message;
+    }
+  }
+
+  function renderUserRow(u) {
+    const tr = document.createElement("tr");
+
+    const emailTd = document.createElement("td");
+    emailTd.textContent = u.email;
+    tr.appendChild(emailTd);
+
+    const nameTd = document.createElement("td");
+    nameTd.textContent = u.display_name || "";
+    tr.appendChild(nameTd);
+
+    const roleTd = document.createElement("td");
+    const roleSelect = document.createElement("select");
+    [["member", "一般成員"], ["admin", "管理員"]].forEach(([value, label]) => {
+      const opt = document.createElement("option");
+      opt.value = value;
+      opt.textContent = label;
+      if ((u.role || "member") === value) opt.selected = true;
+      roleSelect.appendChild(opt);
+    });
+    roleSelect.addEventListener("change", async () => {
+      const prevValue = u.role === "admin" ? "admin" : "member";
+      try {
+        await apiFetch(`/api/users/${encodeURIComponent(u.email)}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ role: roleSelect.value }),
+        });
+        u.role = roleSelect.value;
+      } catch (err) {
+        roleSelect.value = prevValue; // 失敗就恢復原本選項(例如「最後一位管理員不能降級」這個保護擋下來的情況)
+        alert("更新權限失敗:" + err.message);
+      }
+    });
+    roleTd.appendChild(roleSelect);
+    tr.appendChild(roleTd);
+
+    const createdTd = document.createElement("td");
+    createdTd.textContent = u.created_at || "";
+    tr.appendChild(createdTd);
+
+    const actionTd = document.createElement("td");
+    const editBtn = document.createElement("button");
+    editBtn.className = "ghost";
+    editBtn.textContent = "改名稱";
+    editBtn.addEventListener("click", async () => {
+      const newName = prompt("輸入這個帳號要顯示的名稱:", u.display_name || "");
+      if (newName === null) return;
+      try {
+        await apiFetch(`/api/users/${encodeURIComponent(u.email)}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ displayName: newName }),
+        });
+        u.display_name = newName;
+        nameTd.textContent = newName;
+      } catch (err) {
+        alert("更新失敗:" + err.message);
+      }
+    });
+    actionTd.appendChild(editBtn);
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.className = "danger";
+    deleteBtn.textContent = "移除";
+    deleteBtn.style.marginLeft = "6px";
+    deleteBtn.addEventListener("click", async () => {
+      if (!confirm(`確定要移除帳號 ${u.email} 嗎?移除後這個人將無法再登入(除非他也設定在 WHITELIST_EMAILS 裡)。`)) return;
+      try {
+        await apiFetch(`/api/users/${encodeURIComponent(u.email)}`, { method: "DELETE" });
+        tr.remove();
+        const tbody = document.getElementById("users-tbody");
+        document.getElementById("users-empty").style.display = tbody.children.length === 0 ? "block" : "none";
+      } catch (err) {
+        alert("移除失敗:" + err.message);
+      }
+    });
+    actionTd.appendChild(deleteBtn);
+    tr.appendChild(actionTd);
+
+    return tr;
+  }
+
+  document.getElementById("user-add-btn").addEventListener("click", async () => {
+    const emailInput = document.getElementById("user-add-email");
+    const nameInput = document.getElementById("user-add-name");
+    const roleSelect = document.getElementById("user-add-role");
+    const statusEl = document.getElementById("user-add-status");
+    const email = emailInput.value.trim();
+    if (!email) { statusEl.textContent = "請輸入 email"; return; }
+
+    statusEl.textContent = "新增中...";
+    try {
+      await apiFetch("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, displayName: nameInput.value.trim(), role: roleSelect.value }),
+      });
+      statusEl.textContent = "已新增";
+      emailInput.value = "";
+      nameInput.value = "";
+      roleSelect.value = "member";
+      await loadUsers();
+    } catch (err) {
+      statusEl.textContent = "新增失敗:" + err.message;
+    }
+  });
 
   // ---------- Log ----------
   async function loadLogs() {
