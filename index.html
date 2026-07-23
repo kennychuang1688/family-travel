@@ -474,7 +474,7 @@
     line-height: 1.9;
   }
   #itinerary-editor .ql-editor.ql-blank::before { color: rgba(59,42,33,0.35); font-style: normal; }
-  #itinerary-editor .ql-editor img { max-width: 100%; border-radius: 8px; margin: 8px 0; cursor: pointer; }
+  #itinerary-editor .ql-editor img { max-width: 100%; border-radius: 8px; margin: 8px 0; cursor: pointer; vertical-align: middle; }
   #itinerary-editor .ql-editor img.itinerary-image-selected {
     outline: 2px solid var(--gold); outline-offset: 2px;
   }
@@ -1704,9 +1704,9 @@
     function moveDrag(clientX) {
       if (!dragging || !selectedImg) return;
       const delta = clientX - dragStartX;
-      // 最小 60px,避免拖到消失不見;最大不超過編輯區寬度,避免圖片跑到外面去
+      // 最小 24px(再小手把會不好抓,但已經足夠縮成小圖示大小);最大不超過編輯區寬度,避免圖片跑到外面去
       const maxWidth = quillItinerary.root.clientWidth;
-      const newWidth = Math.min(maxWidth, Math.max(60, dragStartWidth + delta));
+      const newWidth = Math.min(maxWidth, Math.max(24, dragStartWidth + delta));
       selectedImg.style.width = newWidth + "px";
       selectedImg.style.height = "auto"; // 高度自動依比例縮放,不會變形
       positionHandle();
