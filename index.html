@@ -2244,11 +2244,6 @@
     }
   });
 
-  // 快取上一次成功抓到的行程列表。切換回「旅遊行程」這個畫面時,先用這份舊資料立即畫出表格,
-  // 不要每次都先清空、乾等 API 回來才有畫面——那樣點一下「旅遊行程」都會有一下子的空白閃爍。
-  // 畫完舊資料後還是會在背景重新抓一次最新的,資料有變動的話會自動用新的蓋過去。
-  let lastTripsData = null;
-
   function renderTripsTable(trips) {
     const tbody = document.getElementById("trips-tbody");
     const emptyEl = document.getElementById("trips-empty");
@@ -2288,7 +2283,6 @@
         if (!ok) return;
         try {
           await apiFetch(`/api/trips/${t.id}`, { method: "DELETE" });
-          lastTripsData = (lastTripsData || []).filter((x) => x.id !== t.id);
           tr.remove();
           document.getElementById("trips-empty").style.display = tbody.children.length === 0 ? "block" : "none";
         } catch (err) {
@@ -2309,12 +2303,10 @@
   }
 
   async function loadTrips() {
-    if (lastTripsData) renderTripsTable(lastTripsData); // 先用快取立即顯示,不要空白等待
-
+    // 不做快取:直接送出請求、等真正的資料回來再畫,確保永遠看到跟伺服器同步的最新狀態,
+    // 也不會因為「先畫舊資料」這個動作,讓送出網路請求的時間點被拖慢(即使只慢一點點)。
     const data = await apiFetch("/api/trips");
-    const trips = data.trips || [];
-    lastTripsData = trips;
-    renderTripsTable(trips); // 資料回來後再用最新的重新畫一次,確保跟伺服器同步
+    renderTripsTable(data.trips || []);
   }
 
   function computeDateRange(start, end) {
