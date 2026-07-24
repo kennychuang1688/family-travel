@@ -414,7 +414,7 @@
     background: var(--bg-softer); color: var(--ink); font-size: 15px; width: 100%; min-width: 0;
   }
   .itinerary-card-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-  .itinerary-card-main input, .itinerary-card-main textarea {
+  .itinerary-card-main input, .itinerary-card-main textarea, .itinerary-card-main .itinerary-card-desc {
     border: 1px solid var(--line); border-radius: 7px; background: var(--bg-softer);
     color: var(--ink); padding: 6px 9px; width: 100%; font-family: "Iansui", "Noto Sans TC", sans-serif;
   }
@@ -425,8 +425,11 @@
     min-height: 0 !important; /* 蓋掉全站 textarea 預設的 min-height:90px,不然這個欄位永遠不會比 90px 矮 */
   }
   .itinerary-card-desc {
-    font-size: 13px; resize: none; overflow: hidden; min-height: 30px; line-height: 1.45;
+    font-size: 13px; min-height: 30px; line-height: 1.45; cursor: text;
   }
+  /* 說明欄位是 contenteditable div,沒有內容時用 :empty 搭配 data-placeholder 顯示提示文字 */
+  .itinerary-card-desc:empty:before { content: attr(data-placeholder); color: #9a8f86; pointer-events: none; }
+  .itinerary-card-desc a { color: var(--gold); text-decoration: underline; }
   .itinerary-card-right { display: flex; flex-direction: column; justify-content: space-between; align-items: center; }
   .itinerary-card-right button {
     border: none; background: transparent; cursor: pointer; font-size: 17px;
@@ -439,7 +442,8 @@
   .itinerary-card-nav-group { display: flex; flex-direction: column; gap: 1px; }
   .itinerary-card-move-btn { font-size: 11px !important; padding: 1px !important; }
   .itinerary-card input:disabled, .itinerary-card select:disabled, .itinerary-card textarea:disabled,
-  .itinerary-card-embed input:disabled, .itinerary-card-embed select:disabled, .itinerary-card-embed textarea:disabled {
+  .itinerary-card-embed input:disabled, .itinerary-card-embed select:disabled, .itinerary-card-embed textarea:disabled,
+  .itinerary-card-embed .itinerary-card-desc[contenteditable="false"] {
     background: transparent; border-color: transparent; opacity: 0.85; cursor: default;
   }
   @media (max-width: 560px) {
@@ -1327,7 +1331,7 @@
 
     quillItinerary = new Quill("#itinerary-editor", {
       theme: "snow",
-      modules: { toolbar: { container: toolbarOptions, handlers: { image: handleItineraryImageInsert } } },
+      modules: { toolbar: { container: toolbarOptions, handlers: { image: handleItineraryImageInsert, link: handleItineraryLinkInsert } } },
     });
 
     // Quill 會自動在編輯區上方插入工具列,這裡取得它並套用深色主題樣式
@@ -1862,6 +1866,43 @@
     input.click();
   }
 
+  // 工具列的「連結」按鈕:預設 Quill 內建的連結功能只認得主要行程內文(quillItinerary)裡的選取範圍,
+  // 對行程表格卡片裡的「說明」欄位完全沒有作用——因為那個欄位原本是普通的 textarea,
+  // 而 textarea 本質上就無法容納連結這種格式化內容,這正是「連結按鈕在卡片裡按了沒反應」的根本原因。
+  // 現在說明欄位已經改成支援格式化內容的 contenteditable,這裡改寫連結按鈕的行為:
+  // 如果最後一次選取文字是發生在某個卡片的說明欄位裡,就把連結套用在那裡;否則維持原本套用在行程內文上。
+  function handleItineraryLinkInsert() {
+    if (lastCardDescField && lastCardDescSelectionRange && document.body.contains(lastCardDescField)) {
+      const selectedText = lastCardDescSelectionRange.toString();
+      if (!selectedText) { alert("請先在說明欄位裡選取要加上連結的文字"); return; }
+      const url = prompt("請輸入連結網址:", "https://");
+      if (!url) return;
+
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(lastCardDescSelectionRange);
+      document.execCommand("createLink", false, url);
+
+      const cardNode = lastCardDescField.closest(".itinerary-card-embed[data-card-id]");
+      const cardId = cardNode ? cardNode.getAttribute("data-card-id") : null;
+      const card = cardId ? currentItineraryCards.find((c) => c.id === cardId) : null;
+      if (card) {
+        const oldValue = card.description;
+        card.description = lastCardDescField.innerHTML;
+        recordCardFieldChange(card.id, "description", oldValue, card.description);
+        scheduleCardSave(card.id);
+      }
+      lastCardDescSelectionRange = null;
+      return;
+    }
+
+    const range = quillItinerary.getSelection();
+    if (!range || range.length === 0) { alert("請先選取要加上連結的文字"); return; }
+    const url = prompt("請輸入連結網址:", "https://");
+    if (!url) return;
+    quillItinerary.format("link", url);
+  }
+
   // 「注意事項」編輯器的插入圖片按鈕,邏輯跟行程規劃的插入圖片完全一樣,
   // 只是插入的目標換成 quillNotes,共用同一套上傳/插入函式(uploadAndInsertItineraryImage)。
   async function handleNotesImageInsert() {
@@ -2306,6 +2347,28 @@
     el.style.height = el.scrollHeight + "px";
   }
 
+  // 卡片欄位有兩種:一般的 input/textarea(用 .value),跟支援連結格式的 contenteditable
+  // 說明欄位(用 .innerHTML)。這兩個小工具讓復原/恢復復原、套用欄位值這些共用邏輯不用重複寫兩份。
+  function getFieldValue(el) {
+    return el.isContentEditable ? el.innerHTML : el.value;
+  }
+  function setFieldValue(el, value) {
+    if (el.isContentEditable) el.innerHTML = value;
+    else el.value = value;
+  }
+
+  // 把卡片說明欄位的內容安全地塞進 contenteditable div 裡:
+  // 如果看起來像是已經存過的 HTML(含連結格式,例如 <a href=...>),直接當 HTML 塞入;
+  // 否則(舊資料,單純的文字)當純文字塞入,避免舊內容裡不小心出現的 < > 符號被誤判成標籤。
+  function setCardDescriptionHTML(div, raw) {
+    const text = raw || "";
+    if (text.includes("<")) {
+      div.innerHTML = text;
+    } else {
+      div.textContent = text;
+    }
+  }
+
   // 行程表格卡片裡的輸入欄位是包在 Quill 的內文區域裡的。Quill 本身在內文區域上
   // 綁了自己的貼上(paste)處理邏輯,如果不擋住事件往上傳遞,直接對著卡片裡的欄位貼上文字時,
   // 內容會被 Quill 攔截、貼到下面自由編輯區裡,而不是貼進使用者實際點著的那個欄位。
@@ -2323,6 +2386,12 @@
   let lastCardFieldEditAt = 0;
   let lastQuillChangeAt = 0;
 
+  // 點擊工具列的連結按鈕時,焦點其實已經離開了卡片的說明欄位(contenteditable),
+  // 所以要另外記住「最後一次是在哪個說明欄位裡、選了哪一段文字」,連結按鈕才知道要套用在這裡,
+  // 而不是誤套用到主要的行程內文(Quill)上。見 populateItineraryCardNode 裡 descInput 的 blur 事件。
+  let lastCardDescField = null;
+  let lastCardDescSelectionRange = null;
+
   function recordCardFieldChange(cardId, field, oldValue, newValue) {
     if (oldValue === newValue) return;
     cardFieldUndoStack.push({ cardId, field, oldValue, newValue });
@@ -2335,10 +2404,11 @@
   // 離開欄位時如果值有改變,才記一筆復原紀錄(而不是每打一個字就記一筆,那樣復原會很瑣碎難用)
   function trackFieldUndo(el, card, field) {
     let valueOnFocus = null;
-    el.addEventListener("focus", () => { valueOnFocus = el.value; });
+    el.addEventListener("focus", () => { valueOnFocus = getFieldValue(el); });
     el.addEventListener("blur", () => {
       if (valueOnFocus === null) return;
-      if (el.value !== valueOnFocus) recordCardFieldChange(card.id, field, valueOnFocus, el.value);
+      const current = getFieldValue(el);
+      if (current !== valueOnFocus) recordCardFieldChange(card.id, field, valueOnFocus, current);
       valueOnFocus = null;
     });
   }
@@ -2353,7 +2423,7 @@
     if (!cardNode) return;
     const fieldEl = cardNode.querySelector(`[data-field="${field}"]`);
     if (fieldEl) {
-      fieldEl.value = value;
+      setFieldValue(fieldEl, value);
       if (fieldEl.tagName === "TEXTAREA") autoResizeTextarea(fieldEl);
     }
     if (field === "category") {
@@ -2579,17 +2649,33 @@
     });
     trackFieldUndo(titleInput, card, "title");
 
-    const descInput = document.createElement("textarea");
+    const descInput = document.createElement("div");
     descInput.className = "itinerary-card-desc";
-    descInput.placeholder = "行程說明";
-    descInput.rows = 1;
-    descInput.value = card.description || "";
+    descInput.contentEditable = "true";
+    descInput.dataset.placeholder = "行程說明";
     descInput.dataset.field = "description";
+    setCardDescriptionHTML(descInput, card.description || "");
     stopPasteBubble(descInput);
     descInput.addEventListener("input", () => {
-      card.description = descInput.value;
-      autoResizeTextarea(descInput);
+      card.description = descInput.innerHTML;
       scheduleCardSave(card.id);
+    });
+    descInput.addEventListener("keydown", (e) => {
+      // 一般 textarea 按 Enter 會自然換行;contenteditable 預設按 Enter 會插入巢狀的 <div>,
+      // 存回去、下次重新載入時格式會跑掉,這裡改成統一插入單純的 <br>,行為比較接近原本的 textarea。
+      if (e.key === "Enter") {
+        e.preventDefault();
+        document.execCommand("insertLineBreak");
+      }
+    });
+    // 記住「最後一次在這個說明欄位裡選取的文字範圍」,離開欄位(例如去點工具列的連結按鈕)時
+    // 選取範圍會跟著記錄下來,這樣工具列的連結按鈕才知道要把連結套用在這裡,而不是主要行程內文上。
+    descInput.addEventListener("blur", () => {
+      const sel = window.getSelection();
+      if (sel.rangeCount > 0 && descInput.contains(sel.anchorNode) && !sel.isCollapsed) {
+        lastCardDescField = descInput;
+        lastCardDescSelectionRange = sel.getRangeAt(0).cloneRange();
+      }
     });
     trackFieldUndo(descInput, card, "description");
 
@@ -2701,13 +2787,11 @@
     node.appendChild(mainCol);
     node.appendChild(rightCol);
     node._hydrated = true;
-    autoResizeTextarea(descInput); // 卡片已經掛到畫面上,現在量出來的高度才準確,讓多行說明一開始就完整顯示
-    autoResizeTextarea(titleInput);
+    autoResizeTextarea(titleInput); // descInput 現在是 contenteditable div,內容多寡會自然撐開高度,不用手動量測
     // 自訂字型(芫荽體)可能還沒下載完成,用瀏覽器預設字型量出來的高度會不準,
     // 等字型真正載入完成後再重新量一次,才是最終正確的高度,避免欄位莫名比實際內容還要高。
     if (document.fonts && document.fonts.ready) {
       document.fonts.ready.then(() => {
-        autoResizeTextarea(descInput);
         autoResizeTextarea(titleInput);
       });
     }
@@ -2767,6 +2851,8 @@
     const isEdit = itineraryDayMode === "edit";
     document.querySelectorAll("#itinerary-editor .itinerary-card-embed input, #itinerary-editor .itinerary-card-embed select, #itinerary-editor .itinerary-card-embed textarea")
       .forEach((el) => { el.disabled = !isEdit; });
+    document.querySelectorAll("#itinerary-editor .itinerary-card-embed .itinerary-card-desc")
+      .forEach((el) => { el.contentEditable = isEdit ? "true" : "false"; });
     document.querySelectorAll("#itinerary-editor .itinerary-card-embed .itinerary-card-delete-btn, #itinerary-editor .itinerary-card-embed .itinerary-card-move-group, #itinerary-editor .itinerary-card-embed .itinerary-card-edit-link-btn, #itinerary-editor .itinerary-card-embed .itinerary-card-insert-after-btn")
       .forEach((el) => { el.style.display = isEdit ? "" : "none"; });
   }
