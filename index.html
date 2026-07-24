@@ -540,7 +540,6 @@
   </div>
   <nav id="main-nav" style="display:none;">
     <button data-view="trips" class="active">旅遊行程</button>
-    <button data-view="checklist">事項清單</button>
     <button data-view="users" id="nav-users" style="display:none;">帳號管理</button>
     <button data-view="logs" id="nav-logs" style="display:none;">Log</button>
   </nav>
@@ -610,6 +609,7 @@
       <button data-sub="itinerary" class="active">行程規劃</button>
       <button data-sub="media">照片 / 影片</button>
       <button data-sub="expenses">費用花費</button>
+      <button data-sub="checklist">事項清單</button>
       <button data-sub="documents">其他文件</button>
       <button data-sub="notes">注意事項</button>
     </div>
@@ -803,6 +803,33 @@
       </div>
     </div>
 
+    <div id="trip-sub-checklist" class="trip-subview">
+      <div class="panel">
+        <div class="status-line" style="margin-bottom:14px;">這裡只會顯示你自己建立的項目,家人各自登入後看到的是各自獨立的清單。</div>
+        <h3 class="checklist-layer1-title">行李清單</h3>
+        <div style="display:flex; gap:10px; margin-bottom:8px; flex-wrap:wrap;">
+          <select id="checklist-bagtype-before">
+            <option value="隨身行李">隨身行李</option>
+            <option value="托運行李">托運行李</option>
+          </select>
+          <input type="text" id="checklist-input-before" placeholder="新增待辦事項..." style="flex:1; min-width:160px;" />
+          <button class="primary" id="checklist-add-btn-before">新增</button>
+        </div>
+        <div class="status-line" style="margin-bottom:16px;">提示:可用逗號分隔一次新增多筆,例如「充電器,牙刷,睡衣」會分成三筆待辦事項</div>
+        <div id="checklist-list-before"></div>
+        <div class="empty" id="checklist-empty-before" style="display:none;">目前沒有「行李清單」項目。</div>
+
+        <h3 class="checklist-layer1-title" style="margin-top:28px; padding-top:20px; border-top-width:1px; border-top-color:var(--line); border-top-style:solid;">旅遊期間</h3>
+        <div style="display:flex; gap:10px; margin-bottom:8px;">
+          <input type="text" id="checklist-input-during" placeholder="新增待辦事項..." style="flex:1;" />
+          <button class="primary" id="checklist-add-btn-during">新增</button>
+        </div>
+        <div class="status-line" style="margin-bottom:16px;">提示:可用逗號分隔一次新增多筆</div>
+        <div id="checklist-list-during" class="checklist-item-grid"></div>
+        <div class="empty" id="checklist-empty-during" style="display:none;">目前沒有「旅遊期間」待辦事項。</div>
+      </div>
+    </div>
+
     <div id="trip-sub-documents" class="trip-subview">
       <div class="panel">
         <h2>其他文件(電子機票、飯店訂單等)</h2>
@@ -840,32 +867,6 @@
   </div>
 
   <!-- 待辦事項 -->
-  <div id="view-checklist" class="view">
-    <div class="panel">
-      <h3 class="checklist-layer1-title">行李清單</h3>
-      <div style="display:flex; gap:10px; margin-bottom:8px; flex-wrap:wrap;">
-        <select id="checklist-bagtype-before">
-          <option value="隨身行李">隨身行李</option>
-          <option value="托運行李">托運行李</option>
-        </select>
-        <input type="text" id="checklist-input-before" placeholder="新增待辦事項..." style="flex:1; min-width:160px;" />
-        <button class="primary" id="checklist-add-btn-before">新增</button>
-      </div>
-      <div class="status-line" style="margin-bottom:16px;">提示:可用逗號分隔一次新增多筆,例如「充電器,牙刷,睡衣」會分成三筆待辦事項</div>
-      <div id="checklist-list-before"></div>
-      <div class="empty" id="checklist-empty-before" style="display:none;">目前沒有「行李清單」項目。</div>
-
-      <h3 class="checklist-layer1-title" style="margin-top:28px; padding-top:20px; border-top-width:1px; border-top-color:var(--line); border-top-style:solid;">旅遊期間</h3>
-      <div style="display:flex; gap:10px; margin-bottom:8px;">
-        <input type="text" id="checklist-input-during" placeholder="新增待辦事項..." style="flex:1;" />
-        <button class="primary" id="checklist-add-btn-during">新增</button>
-      </div>
-      <div class="status-line" style="margin-bottom:16px;">提示:可用逗號分隔一次新增多筆</div>
-      <div id="checklist-list-during" class="checklist-item-grid"></div>
-      <div class="empty" id="checklist-empty-during" style="display:none;">目前沒有「旅遊期間」待辦事項。</div>
-    </div>
-  </div>
-
   <!-- 帳號管理(管理員) -->
   <div id="view-users" class="view">
     <div class="panel">
@@ -2072,7 +2073,6 @@
       b.classList.toggle("active", b.dataset.view === name);
     });
     if (name === "trips") loadTrips();
-    if (name === "checklist") loadChecklist();
     if (name === "users") loadUsers();
     if (name === "logs") loadLogs();
   }
@@ -3406,6 +3406,7 @@
     itinerary: async () => {}, // 開啟行程時已經帶入,不用另外載入
     media: loadMedia,
     expenses: async () => { await loadExchangeRates(); await loadExpenses(); },
+    checklist: loadChecklist,
     documents: loadDocuments,
     notes: async () => {}, // 跟行程規劃一樣,開啟行程時已經帶入,不用另外載入
   };
@@ -4537,8 +4538,9 @@
     const emptyDuring = document.getElementById("checklist-empty-during");
     listBefore.innerHTML = "";
     listDuring.innerHTML = "";
+    if (!currentTripId) return;
 
-    const data = await apiFetch("/api/checklist");
+    const data = await apiFetch(`/api/trips/${currentTripId}/checklist`);
     const items = data.items || [];
     const beforeItems = items.filter((i) => i.phase !== "during");
     const duringItems = items.filter((i) => i.phase === "during");
@@ -4564,6 +4566,7 @@
     const bagTypeSelect = document.getElementById(`checklist-bagtype-${phase}`); // 只有「行李清單」(before)這個分類才有
 
     addBtn.addEventListener("click", async () => {
+      if (!currentTripId) { alert("請先開啟一個行程"); return; }
       const raw = input.value.trim();
       if (!raw) return;
       const bagType = bagTypeSelect ? bagTypeSelect.value : undefined;
@@ -4571,7 +4574,7 @@
       const texts = raw.split(/[,,]/).map((s) => s.trim()).filter(Boolean);
       for (const text of texts) {
         try {
-          const result = await apiFetch("/api/checklist", {
+          const result = await apiFetch(`/api/trips/${currentTripId}/checklist`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ text, phase, bagType }),
