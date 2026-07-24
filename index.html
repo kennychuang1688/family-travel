@@ -3503,6 +3503,10 @@
     document.querySelectorAll("#trip-sub-nav button[data-sub]").forEach((b) => {
       b.classList.toggle("active", b.dataset.sub === name);
     });
+    // 「事項清單」是每個人各自獨立的私人清單(見上面的說明),選到這個分頁時提醒一下這件事,
+    // 離開時恢復成原本的名稱,不要一直掛著這個提示。
+    const checklistBtn = document.querySelector('#trip-sub-nav button[data-sub="checklist"]');
+    if (checklistBtn) checklistBtn.textContent = name === "checklist" ? "事項清單(私)" : "事項清單";
     if (name !== "notes") {
       // 離開注意事項分頁,重置成預覽模式跟按鈕文字,下次點進來一律先看預覽,不要停在編輯模式
       tripNotesMode = "preview";
