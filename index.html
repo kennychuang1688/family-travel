@@ -2244,12 +2244,15 @@
     }
   });
 
-  async function loadTrips() {
+  // 快取上一次成功抓到的行程列表。切換回「旅遊行程」這個畫面時,先用這份舊資料立即畫出表格,
+  // 不要每次都先清空、乾等 API 回來才有畫面——那樣點一下「旅遊行程」都會有一下子的空白閃爍。
+  // 畫完舊資料後還是會在背景重新抓一次最新的,資料有變動的話會自動用新的蓋過去。
+  let lastTripsData = null;
+
+  function renderTripsTable(trips) {
     const tbody = document.getElementById("trips-tbody");
     const emptyEl = document.getElementById("trips-empty");
     tbody.innerHTML = "";
-    const data = await apiFetch("/api/trips");
-    const trips = data.trips || [];
     emptyEl.style.display = trips.length === 0 ? "block" : "none";
 
     for (const t of trips) {
@@ -2285,6 +2288,7 @@
         if (!ok) return;
         try {
           await apiFetch(`/api/trips/${t.id}`, { method: "DELETE" });
+          lastTripsData = (lastTripsData || []).filter((x) => x.id !== t.id);
           tr.remove();
           document.getElementById("trips-empty").style.display = tbody.children.length === 0 ? "block" : "none";
         } catch (err) {
@@ -2302,6 +2306,15 @@
       tr.addEventListener("click", () => openTrip(t.id));
       tbody.appendChild(tr);
     }
+  }
+
+  async function loadTrips() {
+    if (lastTripsData) renderTripsTable(lastTripsData); // 先用快取立即顯示,不要空白等待
+
+    const data = await apiFetch("/api/trips");
+    const trips = data.trips || [];
+    lastTripsData = trips;
+    renderTripsTable(trips); // 資料回來後再用最新的重新畫一次,確保跟伺服器同步
   }
 
   function computeDateRange(start, end) {
