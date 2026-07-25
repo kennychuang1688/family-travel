@@ -1235,6 +1235,7 @@
   let userIsAdmin = false;
   let currentTripId = null;
   let quillItinerary = null;
+  let clearItineraryImageSelection = null; // initQuillItinerary() 裡會指派成 () => selectImage(null),讓其他地方也能清掉殘留的圖片選取狀態
   let itineraryDayContents = {};
   let currentItineraryDate = null;
   let currentTripTitle = "";
@@ -1660,6 +1661,7 @@
         handle.style.display = "none";
       }
     }
+    clearItineraryImageSelection = () => selectImage(null);
 
     // 圖片被選取(顯示金色外框跟控點)之後,按鍵盤的 Delete / Backspace 可以直接刪除這張圖片。
     // 因為圖片是用滑鼠點選的方式選取,不是靠 Quill 本身的文字游標選取,所以刪除鍵預設不會生效,
@@ -2971,10 +2973,15 @@
       // 用 setTimeout 延到下一輪事件迴圈,並且明確呼叫 focus(),確保真的套用得上。
       setTimeout(() => {
         if (itineraryDayMode !== "edit") return; // 使用者可能在這一瞬間又切回預覽了,不要多此一舉
+        // 這裡是程式自己呼叫 focus(),不是使用者真的用滑鼠點擊——原本「點掉圖片選取狀態」
+        // 的機制只有滑鼠點擊才會觸發,程式自動 focus 會繞過那個機制,導致殘留的圖片選取
+        // 狀態一直沒被清掉,進而讓 Delete/Backspace 到處都被誤攔截。這裡主動清掉一次。
+        if (clearItineraryImageSelection) clearItineraryImageSelection();
         quillItinerary.focus();
         const len = quillItinerary.getLength();
         quillItinerary.setSelection(len, 0);
         quillItinerary.format("font", "iansui");
+        quillItinerary.setSelection(len, 0); // 再設一次選取範圍,強制工具列的下拉選單重新讀取、顯示正確的格式
       }, 0);
     }
 
@@ -3507,6 +3514,7 @@
         const len = quillNotes.getLength();
         quillNotes.setSelection(len, 0);
         quillNotes.format("font", "iansui");
+        quillNotes.setSelection(len, 0); // 再設一次選取範圍,強制工具列的下拉選單重新讀取、顯示正確的格式
       }, 0);
     }
     const notesBtn = document.querySelector('#trip-sub-nav button[data-sub="notes"]');
