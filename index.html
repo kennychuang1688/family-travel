@@ -1520,15 +1520,6 @@
       if (source === "user") {
         scheduleAutoSave();
         lastQuillChangeAt = Date.now();
-
-        // 偵測這次改動是不是「按了 Enter 換行」。Quill 對於「還沒真的打過字、只是設定
-        // 好要用的格式」這種狀態,換行之後不一定會保留,這就是為什麼芫荽體套用之後,
-        // 打完第一行、按 Enter 到第二行,格式又跳回 Sans Serif 的原因。這裡偵測到換行
-        // 就重新套用一次芫荽體,確保新的一行也一樣是芫荽體。
-        const insertedNewline = (delta.ops || []).some((op) => typeof op.insert === "string" && op.insert.includes("\n"));
-        if (insertedNewline && itineraryDayMode === "edit") {
-          quillItinerary.format("font", "iansui");
-        }
       }
       if (!suppressCardHydration) hydrateItineraryCardEmbeds(); // 確保任何新出現的行程表格空殼都被填上實際內容
     });
@@ -1635,14 +1626,7 @@
     });
 
     quillNotes.on("text-change", (delta, oldDelta, source) => {
-      if (source === "user") {
-        scheduleTripNotesAutoSave();
-        // 跟行程規劃同樣的原因:換行後格式沒有保留住,這裡偵測到換行就重新套用一次芫荽體。
-        const insertedNewline = (delta.ops || []).some((op) => typeof op.insert === "string" && op.insert.includes("\n"));
-        if (insertedNewline && tripNotesMode === "edit") {
-          quillNotes.format("font", "iansui");
-        }
-      }
+      if (source === "user") scheduleTripNotesAutoSave();
     });
 
     quillNotes.enable(false); // 預設先進入預覽(唯讀)模式,點兩下分頁按鈕才會進入編輯模式
