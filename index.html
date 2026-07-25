@@ -1525,6 +1525,7 @@
     });
 
     fixReliableEnterKey(quillItinerary);
+    applyDefaultFontOnFocus(quillItinerary);
     initItineraryImageResize();
   }
 
@@ -1553,7 +1554,24 @@
       }
       quill.insertText(range.index, "\n", "user");
       quill.setSelection(range.index + 1, 0, "user");
+      // 因為這裡是自己控制的插入流程(不是讓 Quill 內建邏輯處理),可以直接、安全地
+      // 順便把新的這一行預設套用芫荽體,不用再靠之前那種不可靠的 setTimeout + 強制 focus 做法。
+      quill.format("font", "iansui");
     }, true); // 用 capture 階段監聽,確保搶在 Quill 自己的鍵盤處理邏輯之前執行
+  }
+
+  // 每次編輯器「真的被使用者點進去、拿到焦點」的那一刻(從沒有選取範圍變成有選取範圍),
+  // 如果當下游標位置還沒有設定字型格式,就預設套用芫荽體。用 Quill 自己的 selection-change
+  // 事件來判斷「是不是剛拿到焦點」,比之前用程式強制呼叫 focus() 再猜時機可靠多了——
+  // 這裡完全是根據 Quill 自己確實記錄到的焦點/選取狀態變化來觸發,不是用猜的時機點硬套用。
+  function applyDefaultFontOnFocus(quill) {
+    quill.on("selection-change", (range, oldRange) => {
+      if (!range || oldRange) return; // 只在「從沒有選取(失焦)變成有選取(拿到焦點)」的那一刻處理
+      const format = quill.getFormat(range.index, range.length);
+      if (!format.font) {
+        quill.format("font", "iansui");
+      }
+    });
   }
 
   // ---------- 「注意事項」專用的 Quill 編輯器 ----------
@@ -1659,6 +1677,7 @@
     });
 
     fixReliableEnterKey(quillNotes);
+    applyDefaultFontOnFocus(quillNotes);
     quillNotes.enable(false); // 預設先進入預覽(唯讀)模式,點兩下分頁按鈕才會進入編輯模式
   }
 
