@@ -1536,6 +1536,21 @@
   // (range.index)手動插入換行字元——這樣就不會經過那段有問題的內建路徑。
   // 清單、標題、引用區塊這幾種有特殊換行行為(例如清單要延續下一個項目符號)的地方,
   // 還是保留原本 Quill 的處理方式,只針對一般段落文字套用這個修正。
+  // Quill 的字型下拉選單,實務上發現不會因為我們自己呼叫 format()/setSelection() 就立刻
+  // 重新顯示——它似乎只會在使用者真的打字這種原生事件發生時才會重新讀取顯示。
+  // 為了讓下拉選單能「立刻」顯示正確的字型,這裡直接找到選單本身的 DOM,手動把顯示狀態
+  // 設定好,不依賴 Quill 內部的畫面更新機制。
+  function forceFontPickerDisplay(quill, value) {
+    const root = quill.root.closest(".panel") || document;
+    const picker = root.querySelector(".ql-toolbar .ql-picker.ql-font");
+    if (!picker) return;
+    const label = picker.querySelector(".ql-picker-label");
+    if (label) label.setAttribute("data-value", value || "");
+    picker.querySelectorAll(".ql-picker-item").forEach((item) => {
+      item.classList.toggle("ql-selected", (item.getAttribute("data-value") || "") === (value || ""));
+    });
+  }
+
   function fixReliableEnterKey(quill) {
     quill.root.addEventListener("keydown", (e) => {
       if (e.key !== "Enter" || e.shiftKey) return;
@@ -1557,7 +1572,7 @@
       // 不管上一行原本用的是什麼字體(Sans Serif 或其他),換到新的一行一律固定重設成芫荽體。
       // 因為這裡是自己控制的插入流程,可以直接、安全地套用,不用再靠不可靠的 setTimeout 做法。
       quill.format("font", "iansui");
-      quill.setSelection(range.index + 1, 0, "user"); // 再設一次選取範圍,強制工具列的下拉選單重新讀取、顯示正確的格式
+      forceFontPickerDisplay(quill, "iansui"); // 手動同步下拉選單顯示,不依賴 Quill 自己的畫面更新
     }, true); // 用 capture 階段監聽,確保搶在 Quill 自己的鍵盤處理邏輯之前執行
   }
 
@@ -1569,7 +1584,7 @@
     quill.on("selection-change", (range, oldRange) => {
       if (!range || oldRange) return; // 只在「從沒有選取(失焦)變成有選取(拿到焦點)」的那一刻處理
       quill.format("font", "iansui");
-      quill.setSelection(range.index, range.length, "silent"); // 強制工具列的下拉選單重新讀取、顯示正確的格式
+      forceFontPickerDisplay(quill, "iansui"); // 手動同步下拉選單顯示,不依賴 Quill 自己的畫面更新
     });
   }
 
