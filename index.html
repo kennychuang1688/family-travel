@@ -1582,6 +1582,14 @@
   function fixReliableEnterKey(quill) {
     quill.root.addEventListener("keydown", (e) => {
       if (e.key !== "Enter" || e.shiftKey) return;
+
+      // 如果這個 Enter 鍵其實是在某張行程表格卡片的欄位裡按的(標題/說明這種
+      // contenteditable island),完全不要插手,讓事件正常往下傳給卡片欄位自己的
+      // Enter 處理邏輯(標題不允許換行、說明允許換行插入 <br>)。這裡如果搶先處理,
+      // 會誤用 Quill 自己追蹤的游標位置去插入換行,那個位置往往跟卡片欄位實際的
+      // 游標完全對不上,會把行程內文弄亂。
+      if (e.target && e.target.closest && e.target.closest(".itinerary-card-embed")) return;
+
       const range = quill.getSelection();
       if (!range) return;
 
@@ -1616,6 +1624,18 @@
   function applyDefaultFontOnFocus(quill) {
     quill.on("selection-change", (range) => {
       if (quillEnterKeyHandling) return; // Enter 鍵正在處理中,先不要插手,等它處理完自己會補一次
+
+      // 如果目前瀏覽器實際的選取範圍,其實是落在某張行程表格卡片的欄位裡面
+      // (標題/說明這種 contenteditable,DOM 結構上仍然是 .ql-editor 的子孫,所以 Quill
+      // 還是會觸發這個事件),就不要在這裡插手——卡片欄位有自己一套獨立的字型套用邏輯
+      // (見 interceptCardFieldFontPicker),這裡如果也跟著把格式套用到 Quill 自己的內文,
+      // 反而會把使用者剛在卡片欄位選好的字型蓋回去。
+      const sel = window.getSelection();
+      if (sel && sel.anchorNode) {
+        const anchorEl = sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement;
+        if (anchorEl && anchorEl.closest(".itinerary-card-embed")) return;
+      }
+
       applyDefaultFontIfUnset(quill, range);
     });
   }
