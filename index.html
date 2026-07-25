@@ -1553,6 +1553,7 @@
 
     fixReliableEnterKey(quillItinerary);
     interceptCardFieldFontPicker(quillItinerary);
+    syncFontPickerDisplayOnSelection(quillItinerary);
     const selectItineraryImage = initQuillImageResize(quillItinerary, () => itineraryDayMode, scheduleAutoSave, "itinerary-image-resize-handle");
     clearItineraryImageSelection = () => selectItineraryImage(null);
   }
@@ -1576,6 +1577,24 @@
     if (label) label.setAttribute("data-value", value || "");
     picker.querySelectorAll(".ql-picker-item").forEach((item) => {
       item.classList.toggle("ql-selected", (item.getAttribute("data-value") || "") === (value || ""));
+    });
+  }
+
+  // 只同步「字型下拉選單畫面顯示什麼」,完全不去呼叫 quill.format()、setSelection()、
+  // insertText() 這些會真的改動文件內容或游標位置的 API——只是單純更新選單元件自己的 DOM
+  // (data-value 屬性、class),所以不會有跟使用者打字互相搶時間、造成資料錯亂的風險。
+  // 每次游標位置改變,如果目前位置沒有明確設定過字型,就讓選單顯示芫荽體(跟畫面上
+  // 實際的視覺預設一致);卡片欄位(標題/說明)有自己一套獨立的字型處理,這裡不插手。
+  function syncFontPickerDisplayOnSelection(quill) {
+    quill.on("selection-change", (range) => {
+      if (!range) return;
+      const sel = window.getSelection();
+      if (sel && sel.anchorNode) {
+        const anchorEl = sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement;
+        if (anchorEl && anchorEl.closest(".itinerary-card-embed")) return; // 卡片欄位交給它自己的邏輯處理
+      }
+      const format = quill.getFormat(range.index, range.length);
+      forceFontPickerDisplay(quill, format.font || "iansui");
     });
   }
 
@@ -1797,6 +1816,7 @@
 
     fixReliableEnterKey(quillNotes);
     initQuillImageResize(quillNotes, () => tripNotesMode, scheduleTripNotesAutoSave, "notes-image-resize-handle");
+    syncFontPickerDisplayOnSelection(quillNotes);
     quillNotes.enable(false); // 預設先進入預覽(唯讀)模式,點兩下分頁按鈕才會進入編輯模式
   }
 
