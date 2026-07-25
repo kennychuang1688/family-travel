@@ -1524,7 +1524,36 @@
       if (!suppressCardHydration) hydrateItineraryCardEmbeds(); // 確保任何新出現的行程表格空殼都被填上實際內容
     });
 
+    fixReliableEnterKey(quillItinerary);
     initItineraryImageResize();
+  }
+
+  // Quill(1.3.7)內建處理 Enter 鍵的邏輯,在游標剛好落在「一整段沒有空格的長文字,
+  // 因為太長而自動換行」的邊界時,把瀏覽器原生換行結果轉換回 Quill 內部資料結構會算錯位置,
+  // 導致文字整個跑位、跑到下一行去。這裡完全攔截 Enter 鍵、不讓 Quill 內建的換行邏輯執行,
+  // 改成自己用 Quill 的插入文字 API,在目前 Quill 自己追蹤、確定沒問題的游標位置
+  // (range.index)手動插入換行字元——這樣就不會經過那段有問題的內建路徑。
+  // 清單、標題、引用區塊這幾種有特殊換行行為(例如清單要延續下一個項目符號)的地方,
+  // 還是保留原本 Quill 的處理方式,只針對一般段落文字套用這個修正。
+  function fixReliableEnterKey(quill) {
+    quill.root.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" || e.shiftKey) return;
+      const range = quill.getSelection();
+      if (!range) return;
+
+      const format = quill.getFormat(range.index, 0);
+      const isSpecialBlock = !!(format.list || format.blockquote || format.header || format["code-block"]);
+      if (isSpecialBlock) return; // 這幾種交給 Quill 原本的邏輯處理,不要攔截
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (range.length > 0) {
+        quill.deleteText(range.index, range.length, "user");
+      }
+      quill.insertText(range.index, "\n", "user");
+      quill.setSelection(range.index + 1, 0, "user");
+    }, true); // 用 capture 階段監聽,確保搶在 Quill 自己的鍵盤處理邏輯之前執行
   }
 
   // ---------- 「注意事項」專用的 Quill 編輯器 ----------
@@ -1629,6 +1658,7 @@
       if (source === "user") scheduleTripNotesAutoSave();
     });
 
+    fixReliableEnterKey(quillNotes);
     quillNotes.enable(false); // 預設先進入預覽(唯讀)模式,點兩下分頁按鈕才會進入編輯模式
   }
 
