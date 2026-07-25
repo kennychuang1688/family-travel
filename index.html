@@ -1580,6 +1580,23 @@
     });
   }
 
+  // 判斷某個 DOM 節點是不是落在(或就是)某張行程表格卡片的欄位範圍內。這個判斷邏輯統一
+  // 寫在這裡一個地方——之後如果卡片的 HTML 結構有變動(例如外層 class 名稱改變),
+  // 只需要改這裡,不用再到處找散落各處的重複判斷。
+  function isWithinCardField(node) {
+    if (!node) return false;
+    const el = node.nodeType === 1 ? node : node.parentElement;
+    return !!(el && el.closest(".itinerary-card-embed"));
+  }
+
+  // 從某個卡片欄位的 DOM 元素,往上找出它屬於哪一張卡片,回傳對應的卡片資料物件
+  // (itinerary_cards 裡的那一筆);找不到就回傳 null。同樣統一寫在這裡一個地方。
+  function findCardForField(fieldEl) {
+    const cardNode = fieldEl.closest(".itinerary-card-embed[data-card-id]");
+    const cardId = cardNode ? cardNode.getAttribute("data-card-id") : null;
+    return cardId ? currentItineraryCards.find((c) => c.id === cardId) : null;
+  }
+
   // 只同步「字型下拉選單畫面顯示什麼」,完全不去呼叫 quill.format()、setSelection()、
   // insertText() 這些會真的改動文件內容或游標位置的 API——只是單純更新選單元件自己的 DOM
   // (data-value 屬性、class),所以不會有跟使用者打字互相搶時間、造成資料錯亂的風險。
@@ -1589,10 +1606,7 @@
     quill.on("selection-change", (range) => {
       if (!range) return;
       const sel = window.getSelection();
-      if (sel && sel.anchorNode) {
-        const anchorEl = sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement;
-        if (anchorEl && anchorEl.closest(".itinerary-card-embed")) return; // 卡片欄位交給它自己的邏輯處理
-      }
+      if (sel && isWithinCardField(sel.anchorNode)) return; // 卡片欄位交給它自己的邏輯處理
       const format = quill.getFormat(range.index, range.length);
       forceFontPickerDisplay(quill, format.font || "iansui");
     });
@@ -1607,7 +1621,7 @@
       // Enter 處理邏輯(標題不允許換行、說明允許換行插入 <br>)。這裡如果搶先處理,
       // 會誤用 Quill 自己追蹤的游標位置去插入換行,那個位置往往跟卡片欄位實際的
       // 游標完全對不上,會把行程內文弄亂。
-      if (e.target && e.target.closest && e.target.closest(".itinerary-card-embed")) return;
+      if (isWithinCardField(e.target)) return;
 
       const range = quill.getSelection();
       if (!range) return;
@@ -1662,9 +1676,7 @@
     quill.on("selection-change", (range) => {
       if (!range) return; // 失焦,不用處理
       const sel = window.getSelection();
-      const anchorEl = sel && sel.anchorNode &&
-        (sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement);
-      if (!anchorEl || !anchorEl.closest(".itinerary-card-embed")) {
+      if (!sel || !isWithinCardField(sel.anchorNode)) {
         lastCardFieldContext = null;
       }
     });
@@ -1683,9 +1695,7 @@
       if (context.type === "time") {
         context.field.classList.remove("ql-font-iansui", "ql-font-sans");
         if (value) context.field.classList.add(`ql-font-${value}`);
-        const cardNode = context.field.closest(".itinerary-card-embed[data-card-id]");
-        const cardId = cardNode ? cardNode.getAttribute("data-card-id") : null;
-        const card = cardId ? currentItineraryCards.find((c) => c.id === cardId) : null;
+        const card = findCardForField(context.field);
         if (card) {
           card.time_font = value || null;
           scheduleCardSave(card.id);
@@ -1696,9 +1706,7 @@
         selection.addRange(context.range);
         wrapRangeWithFontClass(context.range, value ? `ql-font-${value}` : null);
 
-        const cardNode = context.field.closest(".itinerary-card-embed[data-card-id]");
-        const cardId = cardNode ? cardNode.getAttribute("data-card-id") : null;
-        const card = cardId ? currentItineraryCards.find((c) => c.id === cardId) : null;
+        const card = findCardForField(context.field);
         const fieldName = context.field.dataset.field;
         if (card && fieldName) {
           const oldValue = card[fieldName];
@@ -2115,9 +2123,7 @@
       selection.addRange(range);
       document.execCommand("createLink", false, url);
 
-      const cardNode = field.closest(".itinerary-card-embed[data-card-id]");
-      const cardId = cardNode ? cardNode.getAttribute("data-card-id") : null;
-      const card = cardId ? currentItineraryCards.find((c) => c.id === cardId) : null;
+      const card = findCardForField(field);
       const fieldName = field.dataset.field; // "title" 或 "description",依實際是哪個欄位決定要存回哪個屬性
       if (card && fieldName) {
         const oldValue = card[fieldName];
