@@ -3037,9 +3037,20 @@
         // 這裡是程式自己呼叫 focus(),不是使用者真的用滑鼠點擊——原本「點掉圖片選取狀態」
         // 的機制只有滑鼠點擊才會觸發,程式自動 focus 會繞過那個機制,所以先主動清掉一次。
         if (clearItineraryImageSelection) clearItineraryImageSelection();
-        quillItinerary.focus();
-        const len = quillItinerary.getLength();
-        quillItinerary.setSelection(len, 0);
+
+        // 重要:不要盲目把游標拉回「現在算出來的內容長度」這個位置——如果使用者在這個
+        // setTimeout 真正執行之前,已經手動點擊或已經開始打字了,這裡再把游標拉走,
+        // 會導致接下來的輸入/換行發生在錯誤的位置,造成文字跑位。要先看看目前是不是
+        // 已經有一個有效的選取位置,有的話就尊重它、不要動,只在那個位置套用格式就好。
+        let range = quillItinerary.getSelection();
+        if (!range) {
+          quillItinerary.focus();
+          const len = quillItinerary.getLength();
+          quillItinerary.setSelection(len, 0);
+          range = quillItinerary.getSelection();
+        }
+        if (!range) return;
+
         quillItinerary.format("font", "iansui");
         forceFontPickerDisplay(quillItinerary, "iansui"); // 直接同步選單畫面,不依賴 Quill 自己的更新機制
       }, 0);
@@ -3569,9 +3580,17 @@
       // 所以要主動套用一次,不能只靠 applyDefaultFontOnFocus 那個監聽。
       setTimeout(() => {
         if (tripNotesMode !== "edit") return; // 使用者可能在這一瞬間又切回預覽了,不要多此一舉
-        quillNotes.focus();
-        const len = quillNotes.getLength();
-        quillNotes.setSelection(len, 0);
+        // 一樣要先檢查目前是不是已經有有效的選取位置(代表使用者可能已經開始打字了),
+        // 有的話就尊重它、不要動,避免把游標拉回過期的位置導致文字跑位。
+        let range = quillNotes.getSelection();
+        if (!range) {
+          quillNotes.focus();
+          const len = quillNotes.getLength();
+          quillNotes.setSelection(len, 0);
+          range = quillNotes.getSelection();
+        }
+        if (!range) return;
+
         quillNotes.format("font", "iansui");
         forceFontPickerDisplay(quillNotes, "iansui"); // 直接同步選單畫面,不依賴 Quill 自己的更新機制
       }, 0);
