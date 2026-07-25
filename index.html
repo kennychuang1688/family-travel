@@ -26,8 +26,8 @@
     font-style: normal;
     font-display: swap;
   }
-  .ql-editor .ql-font-iansui { font-family: "Iansui", "Noto Sans TC", sans-serif; }
-  .ql-editor .ql-font-sans { font-family: "Noto Sans TC", Arial, sans-serif; }
+  #itinerary-editor .ql-editor .ql-font-iansui, #notes-editor .ql-editor .ql-font-iansui { font-family: "Iansui", "Noto Sans TC", sans-serif; }
+  #itinerary-editor .ql-editor .ql-font-sans, #notes-editor .ql-editor .ql-font-sans { font-family: "Noto Sans TC", Arial, sans-serif; }
   #itinerary-toolbar .ql-font .ql-picker-label[data-value="iansui"]::before,
   #itinerary-toolbar .ql-font .ql-picker-item[data-value="iansui"]::before,
   #notes-toolbar .ql-font .ql-picker-label[data-value="iansui"]::before,
@@ -309,7 +309,7 @@
   #notes-toolbar button.ql-active .ql-fill { fill: var(--gold); }
   #notes-toolbar .ql-picker-label.ql-active,
   #notes-toolbar .ql-picker-item.ql-selected { color: var(--gold); }
-  #notes-editor .ql-editor { min-height: 320px; }
+  #notes-editor .ql-editor { min-height: 320px; font-family: "Iansui", "Noto Sans TC", sans-serif; }
 
   /* 清單已在最外層時,「減少縮排」會套用這個 class,讓「這一行」單獨完全靠齊編輯區左邊緣,
      不會影響同一個 <ul>/<ol> 容器裡沒有套用的其他兄弟項目 */
@@ -492,6 +492,7 @@
     color: var(--paper);
     min-height: 420px;
     line-height: 1.9;
+    font-family: "Iansui", "Noto Sans TC", sans-serif;
   }
   #itinerary-editor .ql-editor.ql-blank::before { color: rgba(59,42,33,0.35); font-style: normal; }
   #itinerary-editor .ql-editor img { max-width: 100%; border-radius: 8px; margin: 8px 0; cursor: pointer; vertical-align: middle; }
@@ -1539,7 +1540,6 @@
     });
 
     fixReliableEnterKey(quillItinerary);
-    applyDefaultFontOnFocus(quillItinerary);
     interceptCardFieldFontPicker(quillItinerary);
     initItineraryImageResize();
   }
@@ -1566,24 +1566,6 @@
     });
   }
 
-  // 用來暫停「游標移動就檢查格式」那個監聽器的旗標——按 Enter 鍵處理換行的過程中,
-  // 中途會觸發好幾次 selection-change,如果那個監聽器在這個過程中插進來動格式,
-  // 會跟這裡的插入/搬移游標操作互相干擾,導致文字跑位。設這個旗標,讓監聽器在
-  // Enter 鍵處理期間先按兵不動,等處理完畢後再統一補一次。
-  let quillEnterKeyHandling = false;
-
-  // 檢查目前位置有沒有明確設定過字型,沒有的話補上芫荽體——單一個地方負責這件事,
-  // 不管是游標移動觸發的,還是 Enter 鍵處理完畢後主動觸發的,都呼叫這個函式,
-  // 確保同一時間只有一個地方在動格式,不會互相搶著寫。
-  function applyDefaultFontIfUnset(quill, range) {
-    if (!range) return;
-    const format = quill.getFormat(range.index, range.length);
-    if (!format.font) {
-      quill.format("font", "iansui");
-      forceFontPickerDisplay(quill, "iansui"); // 手動同步下拉選單顯示,不依賴 Quill 自己的畫面更新
-    }
-  }
-
   function fixReliableEnterKey(quill) {
     quill.root.addEventListener("keydown", (e) => {
       if (e.key !== "Enter" || e.shiftKey) return;
@@ -1605,44 +1587,16 @@
       e.preventDefault();
       e.stopPropagation();
 
-      quillEnterKeyHandling = true; // 處理期間先暫停 applyDefaultFontOnFocus,避免互相干擾
-      try {
-        if (range.length > 0) {
-          quill.deleteText(range.index, range.length, "user");
-        }
-        quill.insertText(range.index, "\n", "user");
-        quill.setSelection(range.index + 1, 0, "user");
-      } finally {
-        quillEnterKeyHandling = false;
+      if (range.length > 0) {
+        quill.deleteText(range.index, range.length, "user");
       }
-
-      // 所有操作都確定完成、旗標也解除之後,才唯一一次檢查並套用預設格式
-      applyDefaultFontIfUnset(quill, quill.getSelection());
+      quill.insertText(range.index, "\n", "user");
+      quill.setSelection(range.index + 1, 0, "user");
+      // 不再額外呼叫 format() 套用預設字型——這個「持續監聽游標移動、動態呼叫 format()」
+      // 的做法,這幾輪下來反覆造成資料錯亂(圖片選取卡住、文字跑位、字元順序錯亂),
+      // 風險已經證明太高。預設字型改成純 CSS 處理(見 .ql-editor 的 font-family 設定),
+      // 不需要、也不應該再靠 JS 動態介入。
     }, true); // 用 capture 階段監聽,確保搶在 Quill 自己的鍵盤處理邏輯之前執行
-  }
-
-  // 每次游標位置改變(不管是切換分頁拿到焦點,還是單純在已經開啟的內容裡移動游標),
-  // 檢查當下位置有沒有明確設定過字型——現在「Sans Serif」是一個真正獨立標記的格式(見上面
-  // FontAttributor 的 whitelist 多了一個 "sans"),所以這裡看到「沒有格式」就代表這個位置
-  // 真的從來沒被設定過,可以放心預設成芫荽體;如果使用者之前明確選過 Sans Serif 或芫荽體,
-  // 這裡看到的會是那個明確的值,不會被誤蓋掉。
-  function applyDefaultFontOnFocus(quill) {
-    quill.on("selection-change", (range) => {
-      if (quillEnterKeyHandling) return; // Enter 鍵正在處理中,先不要插手,等它處理完自己會補一次
-
-      // 如果目前瀏覽器實際的選取範圍,其實是落在某張行程表格卡片的欄位裡面
-      // (標題/說明這種 contenteditable,DOM 結構上仍然是 .ql-editor 的子孫,所以 Quill
-      // 還是會觸發這個事件),就不要在這裡插手——卡片欄位有自己一套獨立的字型套用邏輯
-      // (見 interceptCardFieldFontPicker),這裡如果也跟著把格式套用到 Quill 自己的內文,
-      // 反而會把使用者剛在卡片欄位選好的字型蓋回去。
-      const sel = window.getSelection();
-      if (sel && sel.anchorNode) {
-        const anchorEl = sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement;
-        if (anchorEl && anchorEl.closest(".itinerary-card-embed")) return;
-      }
-
-      applyDefaultFontIfUnset(quill, range);
-    });
   }
 
 
@@ -1814,7 +1768,6 @@
     });
 
     fixReliableEnterKey(quillNotes);
-    applyDefaultFontOnFocus(quillNotes);
     quillNotes.enable(false); // 預設先進入預覽(唯讀)模式,點兩下分頁按鈕才會進入編輯模式
   }
 
@@ -3166,34 +3119,6 @@
     if (toolbarEl) toolbarEl.style.display = isEdit ? "" : "none";
     if (quillItinerary) quillItinerary.enable(isEdit);
 
-    if (isEdit && quillItinerary) {
-      // 進入編輯模式的當下就直接套用芫荽體,不要等使用者自己點進文字內容裡才觸發——
-      // 單純點分頁按鈕切換到編輯模式,並不會讓編輯器「真的拿到焦點」,所以不能只靠
-      // applyDefaultFontOnFocus 那個監聽,這裡额外主動套用一次。
-      // 用 setTimeout 延到下一輪事件迴圈,確保 enable() 真的生效之後再操作,比較可靠。
-      setTimeout(() => {
-        if (itineraryDayMode !== "edit") return; // 使用者可能在這一瞬間又切回預覽了,不要多此一舉
-        // 這裡是程式自己呼叫 focus(),不是使用者真的用滑鼠點擊——原本「點掉圖片選取狀態」
-        // 的機制只有滑鼠點擊才會觸發,程式自動 focus 會繞過那個機制,所以先主動清掉一次。
-        if (clearItineraryImageSelection) clearItineraryImageSelection();
-
-        // 重要:不要盲目把游標拉回「現在算出來的內容長度」這個位置——如果使用者在這個
-        // setTimeout 真正執行之前,已經手動點擊或已經開始打字了,這裡再把游標拉走,
-        // 會導致接下來的輸入/換行發生在錯誤的位置,造成文字跑位。要先看看目前是不是
-        // 已經有一個有效的選取位置,有的話就尊重它、不要動,只在那個位置套用格式就好。
-        let range = quillItinerary.getSelection();
-        if (!range) {
-          quillItinerary.focus();
-          const len = quillItinerary.getLength();
-          quillItinerary.setSelection(len, 0);
-          range = quillItinerary.getSelection();
-        }
-        if (!range) return;
-
-        applyDefaultFontIfUnset(quillItinerary, range);
-      }, 0);
-    }
-
     applyItineraryCardEditability(); // 用目前的預覽/編輯模式,重新套用內文中行程表格卡片是否可編輯
 
     if (!isEdit) {
@@ -3713,25 +3638,6 @@
     const toolbarEl = document.getElementById("notes-toolbar");
     if (toolbarEl) toolbarEl.style.display = isEdit ? "" : "none";
     if (quillNotes) quillNotes.enable(isEdit);
-    if (isEdit && quillNotes) {
-      // 跟行程規劃同樣的原因:單純點分頁按鈕切換到編輯模式,編輯器並不會「真的拿到焦點」,
-      // 所以要主動套用一次,不能只靠 applyDefaultFontOnFocus 那個監聽。
-      setTimeout(() => {
-        if (tripNotesMode !== "edit") return; // 使用者可能在這一瞬間又切回預覽了,不要多此一舉
-        // 一樣要先檢查目前是不是已經有有效的選取位置(代表使用者可能已經開始打字了),
-        // 有的話就尊重它、不要動,避免把游標拉回過期的位置導致文字跑位。
-        let range = quillNotes.getSelection();
-        if (!range) {
-          quillNotes.focus();
-          const len = quillNotes.getLength();
-          quillNotes.setSelection(len, 0);
-          range = quillNotes.getSelection();
-        }
-        if (!range) return;
-
-        applyDefaultFontIfUnset(quillNotes, range);
-      }, 0);
-    }
     const notesBtn = document.querySelector('#trip-sub-nav button[data-sub="notes"]');
     if (notesBtn) notesBtn.textContent = "注意事項" + (isEdit ? "(編)" : "(預)");
   }
