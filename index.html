@@ -2534,6 +2534,23 @@
     el.addEventListener("paste", (e) => e.stopPropagation());
   }
 
+  // 卡片的標題/說明欄位是巢狀在行程內文這個大的 contenteditable 裡面的獨立可編輯小區塊。
+  // 瀏覽器對於「巢狀可編輯區域」按 Ctrl+A(全選),預設行為常常會選到最外層的整篇內文,
+  // 不是只選這個小區塊裡的文字。這裡攔截 Ctrl+A/Cmd+A,改成只選取這個欄位自己的內容。
+  function restrictSelectAllToField(el) {
+    el.addEventListener("keydown", (e) => {
+      const isSelectAll = e.key && e.key.toLowerCase() === "a" && (e.ctrlKey || e.metaKey);
+      if (!isSelectAll) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }, true); // 用 capture 階段,確保搶在 Quill 自己的鍵盤處理邏輯之前執行
+  }
+
   // 行程表格卡片裡的欄位(時間/類別/名稱/說明/備註/停留時間)是一般的 input/select/textarea,
   // 不是透過 Quill 的編輯指令去改的,所以 Quill 自己內建的復原機制完全不知道這些欄位發生過什麼變化。
   // 這裡另外做一組專門給卡片欄位用的復原/恢復復原紀錄,跟 Quill 本身的內文復原分開處理;
@@ -2827,6 +2844,7 @@
       }
     });
     trackFieldUndo(titleInput, card, "title");
+    restrictSelectAllToField(titleInput);
 
     const descInput = document.createElement("div");
     descInput.className = "itinerary-card-desc";
@@ -2856,6 +2874,7 @@
       }
     });
     trackFieldUndo(descInput, card, "description");
+    restrictSelectAllToField(descInput);
 
     mainCol.appendChild(titleInput);
     mainCol.appendChild(descInput);
