@@ -421,6 +421,7 @@
   .itinerary-card-left input, .itinerary-card-left select {
     padding: 6px 8px; border: 1px solid var(--line); border-radius: 7px;
     background: var(--bg-softer); color: var(--ink); font-size: 15px; width: 100%; min-width: 0;
+    font-family: "Iansui", "Noto Sans TC", sans-serif;
   }
   .itinerary-card-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .itinerary-card-main input, .itinerary-card-main textarea, .itinerary-card-main .itinerary-card-desc {
@@ -452,7 +453,8 @@
   .itinerary-card-move-btn { font-size: 11px !important; padding: 1px !important; }
   .itinerary-card input:disabled, .itinerary-card select:disabled, .itinerary-card textarea:disabled,
   .itinerary-card-embed input:disabled, .itinerary-card-embed select:disabled, .itinerary-card-embed textarea:disabled,
-  .itinerary-card-embed .itinerary-card-desc[contenteditable="false"] {
+  .itinerary-card-embed .itinerary-card-desc[contenteditable="false"],
+  .itinerary-card-embed .itinerary-card-title[contenteditable="false"] {
     background: transparent; border-color: transparent; opacity: 0.85; cursor: default;
   }
   @media (max-width: 560px) {
@@ -1533,6 +1535,7 @@
 
     fixReliableEnterKey(quillItinerary);
     applyDefaultFontOnFocus(quillItinerary);
+    interceptCardFieldFontPicker(quillItinerary);
     initItineraryImageResize();
   }
 
@@ -1617,6 +1620,71 @@
     });
   }
 
+
+  // 幫選取範圍(卡片標題/說明欄位裡的文字選取)套用字型 class,用 <span> 包起來。
+  // Range.surroundContents 在選取範圍剛好跨過某些元素邊界時會丟例外,這時候改用
+  // extractContents+insertNode 的方式手動包裹,確保各種選取情況都能處理。
+  function wrapRangeWithFontClass(range, cssClass) {
+    if (range.collapsed) return;
+    const span = document.createElement("span");
+    if (cssClass) span.className = cssClass;
+    try {
+      range.surroundContents(span);
+    } catch (e) {
+      const contents = range.extractContents();
+      span.appendChild(contents);
+      range.insertNode(span);
+    }
+  }
+
+  // 攔截工具列的字型下拉選單:如果最後互動的是某張行程表格卡片的欄位——標題/說明(文字選取範圍,
+  // 可以逐字元混搭)或時間(整欄位一起套用)——就把選到的字型套用在那裡,而不是誤套用到行程內文上。
+  // Quill 的字型選單其實是靠一個隱藏的原生 <select class="ql-font"> 元素驅動的,這裡直接監聽
+  // 那個元素的 change 事件,用 capture 階段搶在 Quill 自己的處理邏輯之前執行——如果判斷要攔截,
+  // 就呼叫 stopImmediatePropagation() 不讓 Quill 也跟著把這次選擇套用到行程內文的目前游標位置上。
+  function interceptCardFieldFontPicker(quill) {
+    const toolbarEl = quill.getModule("toolbar").container;
+    const select = toolbarEl.querySelector("select.ql-font");
+    if (!select) return;
+
+    select.addEventListener("change", (e) => {
+      const context = lastCardFieldContext;
+      if (!context || !document.body.contains(context.field)) return; // 不是卡片欄位,讓 Quill 照原本的方式處理
+
+      e.stopImmediatePropagation();
+      const value = select.value; // "" | "sans" | "iansui"
+
+      if (context.type === "time") {
+        context.field.classList.remove("ql-font-iansui", "ql-font-sans");
+        if (value) context.field.classList.add(`ql-font-${value}`);
+        const cardNode = context.field.closest(".itinerary-card-embed[data-card-id]");
+        const cardId = cardNode ? cardNode.getAttribute("data-card-id") : null;
+        const card = cardId ? currentItineraryCards.find((c) => c.id === cardId) : null;
+        if (card) {
+          card.time_font = value || null;
+          scheduleCardSave(card.id);
+        }
+      } else if (context.type === "range") {
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(context.range);
+        wrapRangeWithFontClass(context.range, value ? `ql-font-${value}` : null);
+
+        const cardNode = context.field.closest(".itinerary-card-embed[data-card-id]");
+        const cardId = cardNode ? cardNode.getAttribute("data-card-id") : null;
+        const card = cardId ? currentItineraryCards.find((c) => c.id === cardId) : null;
+        const fieldName = context.field.dataset.field;
+        if (card && fieldName) {
+          const oldValue = card[fieldName];
+          card[fieldName] = context.field.innerHTML;
+          recordCardFieldChange(card.id, fieldName, oldValue, card[fieldName]);
+          scheduleCardSave(card.id);
+        }
+      }
+
+      lastCardFieldContext = null;
+    }, true); // 用 capture 階段監聽,確保搶在 Quill 自己的處理邏輯之前執行
+  }
 
   // ---------- 「注意事項」專用的 Quill 編輯器 ----------
   // 跟行程規劃共用同一套 Quill 函式庫跟基本格式化工具(粗體/顏色/清單/對齊/插入圖片等),
@@ -1974,29 +2042,33 @@
   // 對行程表格卡片裡的「說明」欄位完全沒有作用——因為那個欄位原本是普通的 textarea,
   // 而 textarea 本質上就無法容納連結這種格式化內容,這正是「連結按鈕在卡片裡按了沒反應」的根本原因。
   // 現在說明欄位已經改成支援格式化內容的 contenteditable,這裡改寫連結按鈕的行為:
-  // 如果最後一次選取文字是發生在某個卡片的說明欄位裡,就把連結套用在那裡;否則維持原本套用在行程內文上。
+  // 如果最後一次選取文字是發生在某個卡片的標題/說明欄位裡,就把連結套用在那裡;否則維持原本套用在行程內文上。
   function handleItineraryLinkInsert() {
-    if (lastCardDescField && lastCardDescSelectionRange && document.body.contains(lastCardDescField)) {
-      const selectedText = lastCardDescSelectionRange.toString();
-      if (!selectedText) { alert("請先在說明欄位裡選取要加上連結的文字"); return; }
+    if (lastCardFieldContext && lastCardFieldContext.type === "range" &&
+        document.body.contains(lastCardFieldContext.field)) {
+      const field = lastCardFieldContext.field;
+      const range = lastCardFieldContext.range;
+      const selectedText = range.toString();
+      if (!selectedText) { alert("請先在欄位裡選取要加上連結的文字"); return; }
       const url = prompt("請輸入連結網址:", "https://");
       if (!url) return;
 
       const selection = window.getSelection();
       selection.removeAllRanges();
-      selection.addRange(lastCardDescSelectionRange);
+      selection.addRange(range);
       document.execCommand("createLink", false, url);
 
-      const cardNode = lastCardDescField.closest(".itinerary-card-embed[data-card-id]");
+      const cardNode = field.closest(".itinerary-card-embed[data-card-id]");
       const cardId = cardNode ? cardNode.getAttribute("data-card-id") : null;
       const card = cardId ? currentItineraryCards.find((c) => c.id === cardId) : null;
-      if (card) {
-        const oldValue = card.description;
-        card.description = lastCardDescField.innerHTML;
-        recordCardFieldChange(card.id, "description", oldValue, card.description);
+      const fieldName = field.dataset.field; // "title" 或 "description",依實際是哪個欄位決定要存回哪個屬性
+      if (card && fieldName) {
+        const oldValue = card[fieldName];
+        card[fieldName] = field.innerHTML;
+        recordCardFieldChange(card.id, fieldName, oldValue, card[fieldName]);
         scheduleCardSave(card.id);
       }
-      lastCardDescSelectionRange = null;
+      lastCardFieldContext = null;
       return;
     }
 
@@ -2494,11 +2566,12 @@
   let lastCardFieldEditAt = 0;
   let lastQuillChangeAt = 0;
 
-  // 點擊工具列的連結按鈕時,焦點其實已經離開了卡片的說明欄位(contenteditable),
-  // 所以要另外記住「最後一次是在哪個說明欄位裡、選了哪一段文字」,連結按鈕才知道要套用在這裡,
-  // 而不是誤套用到主要的行程內文(Quill)上。見 populateItineraryCardNode 裡 descInput 的 blur 事件。
-  let lastCardDescField = null;
-  let lastCardDescSelectionRange = null;
+  // 點擊工具列的連結/字型按鈕時,焦點其實已經離開了卡片欄位(contenteditable 或一般 input),
+  // 所以要另外記住「最後一次是在哪個卡片欄位互動的」,工具列的按鈕才知道要套用在這裡,
+  // 而不是誤套用到主要的行程內文(Quill)上。
+  // type "range":標題/說明這種 contenteditable 欄位,記住的是選取的文字範圍(可以逐字元套用格式)。
+  // type "time":時間這種一般 input 欄位,沒有選取範圍的概念,整個欄位一起套用格式。
+  let lastCardFieldContext = null;
 
   function recordCardFieldChange(cardId, field, oldValue, newValue) {
     if (oldValue === newValue) return;
@@ -2572,7 +2645,7 @@
           time: card.time, category: card.category, title: card.title,
           description: card.description, notes: card.notes,
           durationValue: card.duration_value, durationUnit: card.duration_unit,
-          mapLink: card.map_link,
+          mapLink: card.map_link, timeFont: card.time_font,
         }),
       });
     } catch (err) {
@@ -2628,6 +2701,10 @@
     timeInput.inputMode = "numeric";
     timeInput.value = card.time || "";
     timeInput.dataset.field = "time";
+    // 時間欄位是整欄位套用字型(不像標題/說明可以逐字元混搭),用 class 直接切換
+    if (card.time_font === "iansui" || card.time_font === "sans") {
+      timeInput.classList.add(`ql-font-${card.time_font}`);
+    }
     stopPasteBubble(timeInput);
     timeInput.addEventListener("input", () => {
       // 只保留數字,自動在第 2、3 碼中間補上冒號(例如打 0830 會自動變成 08:30)
@@ -2635,6 +2712,9 @@
       timeInput.value = digits.length > 2 ? digits.slice(0, 2) + ":" + digits.slice(2) : digits;
     });
     timeInput.addEventListener("blur", () => {
+      // 記住「最後互動的是這個時間欄位」,離開欄位去點工具列的字型下拉選單時,
+      // 才知道要把整個欄位套用選到的字型,而不是誤套用到行程內文上。
+      lastCardFieldContext = { type: "time", field: timeInput };
       if (!timeInput.value.trim()) { card.time = ""; scheduleCardSave(card.id); return; }
       const parts = timeInput.value.split(":");
       let h = parseInt(parts[0] || "0", 10);
@@ -2733,27 +2813,40 @@
     mainCol.className = "itinerary-card-main";
     mainCol.setAttribute("contenteditable", "false");
 
-    const titleInput = document.createElement("textarea");
+    const titleInput = document.createElement("div");
     titleInput.className = "itinerary-card-title";
-    titleInput.placeholder = "行程名稱";
-    titleInput.rows = 1;
-    titleInput.value = (card.title || "").replace(/[\r\n]+/g, " ");
+    titleInput.contentEditable = "true";
+    titleInput.dataset.placeholder = "行程名稱";
     titleInput.dataset.field = "title";
+    setCardDescriptionHTML(titleInput, (card.title || "").replace(/[\r\n]+/g, " "));
     stopPasteBubble(titleInput);
     titleInput.addEventListener("input", () => {
-      // 行程名稱不需要手動換行,只靠自動換行(寬度不夠才會折行);
-      // 如果因為複製貼上等原因夾帶了換行字元,這裡先清掉,避免欄位莫名其妙變得比實際需要更高
-      if (titleInput.value.includes("\n") || titleInput.value.includes("\r")) {
-        const cursorPos = titleInput.selectionStart;
-        titleInput.value = titleInput.value.replace(/[\r\n]+/g, " ");
-        titleInput.setSelectionRange(cursorPos, cursorPos);
+      // 行程名稱不需要多行;如果因為複製貼上等原因夾帶了換行(變成 <br>/<div>),
+      // 這裡攤平成單行純文字,避免欄位莫名其妙變成好幾行(這種情況很少見,攤平時
+      // 會連帶失去格式,但這只是邊界情況,可以接受)。
+      if (titleInput.querySelector("br, div")) {
+        const flatText = titleInput.textContent.replace(/[\r\n]+/g, " ");
+        titleInput.textContent = flatText;
+        const range = document.createRange();
+        range.selectNodeContents(titleInput);
+        range.collapse(false);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
       }
-      card.title = titleInput.value;
-      autoResizeTextarea(titleInput);
+      card.title = titleInput.innerHTML;
       scheduleCardSave(card.id);
     });
     titleInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter") e.preventDefault(); // 行程名稱不允許按 Enter 手動換行
+    });
+    // 記住「最後一次在這個標題欄位裡選取的文字範圍」,離開欄位(例如去點工具列的字型/連結按鈕)
+    // 時選取範圍會跟著記錄下來,這樣工具列的按鈕才知道要套用在這裡,而不是行程內文上。
+    titleInput.addEventListener("blur", () => {
+      const sel = window.getSelection();
+      if (sel.rangeCount > 0 && titleInput.contains(sel.anchorNode) && !sel.isCollapsed) {
+        lastCardFieldContext = { type: "range", field: titleInput, range: sel.getRangeAt(0).cloneRange() };
+      }
     });
     trackFieldUndo(titleInput, card, "title");
 
@@ -2781,8 +2874,7 @@
     descInput.addEventListener("blur", () => {
       const sel = window.getSelection();
       if (sel.rangeCount > 0 && descInput.contains(sel.anchorNode) && !sel.isCollapsed) {
-        lastCardDescField = descInput;
-        lastCardDescSelectionRange = sel.getRangeAt(0).cloneRange();
+        lastCardFieldContext = { type: "range", field: descInput, range: sel.getRangeAt(0).cloneRange() };
       }
     });
     trackFieldUndo(descInput, card, "description");
@@ -2895,14 +2987,7 @@
     node.appendChild(mainCol);
     node.appendChild(rightCol);
     node._hydrated = true;
-    autoResizeTextarea(titleInput); // descInput 現在是 contenteditable div,內容多寡會自然撐開高度,不用手動量測
-    // 自訂字型(芫荽體)可能還沒下載完成,用瀏覽器預設字型量出來的高度會不準,
-    // 等字型真正載入完成後再重新量一次,才是最終正確的高度,避免欄位莫名比實際內容還要高。
-    if (document.fonts && document.fonts.ready) {
-      document.fonts.ready.then(() => {
-        autoResizeTextarea(titleInput);
-      });
-    }
+    // titleInput、descInput 現在都是 contenteditable div,內容多寡會自然撐開高度,不用手動量測
   }
 
   // 讓內文中每一個「行程表格」的嵌入空殼都填上實際內容;
@@ -2957,7 +3042,7 @@
   function applyCardNodeEditability(node) {
     const isEdit = itineraryDayMode === "edit";
     node.querySelectorAll("input, select, textarea").forEach((el) => { el.disabled = !isEdit; });
-    node.querySelectorAll(".itinerary-card-desc").forEach((el) => { el.contentEditable = isEdit ? "true" : "false"; });
+    node.querySelectorAll(".itinerary-card-desc, .itinerary-card-title").forEach((el) => { el.contentEditable = isEdit ? "true" : "false"; });
     node.querySelectorAll(".itinerary-card-delete-btn, .itinerary-card-move-group, .itinerary-card-edit-link-btn, .itinerary-card-insert-after-btn")
       .forEach((el) => { el.style.display = isEdit ? "" : "none"; });
   }
@@ -2970,7 +3055,7 @@
     const isEdit = itineraryDayMode === "edit";
     document.querySelectorAll("#itinerary-editor .itinerary-card-embed input, #itinerary-editor .itinerary-card-embed select, #itinerary-editor .itinerary-card-embed textarea")
       .forEach((el) => { el.disabled = !isEdit; });
-    document.querySelectorAll("#itinerary-editor .itinerary-card-embed .itinerary-card-desc")
+    document.querySelectorAll("#itinerary-editor .itinerary-card-embed .itinerary-card-desc, #itinerary-editor .itinerary-card-embed .itinerary-card-title")
       .forEach((el) => { el.contentEditable = isEdit ? "true" : "false"; });
     document.querySelectorAll("#itinerary-editor .itinerary-card-embed .itinerary-card-delete-btn, #itinerary-editor .itinerary-card-embed .itinerary-card-move-group, #itinerary-editor .itinerary-card-embed .itinerary-card-edit-link-btn, #itinerary-editor .itinerary-card-embed .itinerary-card-insert-after-btn")
       .forEach((el) => { el.style.display = isEdit ? "" : "none"; });
@@ -2995,7 +3080,7 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ time: "", category: "景點", title: "", description: "", notes: "", durationValue: "", durationUnit: "hr", mapLink: "" }),
       });
-      const newCard = { id: res.id, time: "", category: "景點", title: "", description: "", notes: "", duration_value: "", duration_unit: "hr", map_link: "" };
+      const newCard = { id: res.id, time: "", category: "景點", title: "", description: "", notes: "", duration_value: "", duration_unit: "hr", map_link: "", time_font: null };
       currentItineraryCards.push(newCard);
       const range = quillItinerary.getSelection(true) || { index: quillItinerary.getLength() };
       quillItinerary.insertEmbed(range.index, "itineraryCard", { id: newCard.id }, "user");
