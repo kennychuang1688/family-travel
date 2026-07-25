@@ -1558,6 +1558,24 @@
     });
   }
 
+  // 用來暫停「游標移動就檢查格式」那個監聽器的旗標——按 Enter 鍵處理換行的過程中,
+  // 中途會觸發好幾次 selection-change,如果那個監聽器在這個過程中插進來動格式,
+  // 會跟這裡的插入/搬移游標操作互相干擾,導致文字跑位。設這個旗標,讓監聽器在
+  // Enter 鍵處理期間先按兵不動,等處理完畢後再統一補一次。
+  let quillEnterKeyHandling = false;
+
+  // 檢查目前位置有沒有明確設定過字型,沒有的話補上芫荽體——單一個地方負責這件事,
+  // 不管是游標移動觸發的,還是 Enter 鍵處理完畢後主動觸發的,都呼叫這個函式,
+  // 確保同一時間只有一個地方在動格式,不會互相搶著寫。
+  function applyDefaultFontIfUnset(quill, range) {
+    if (!range) return;
+    const format = quill.getFormat(range.index, range.length);
+    if (!format.font) {
+      quill.format("font", "iansui");
+      forceFontPickerDisplay(quill, "iansui"); // 手動同步下拉選單顯示,不依賴 Quill 自己的畫面更新
+    }
+  }
+
   function fixReliableEnterKey(quill) {
     quill.root.addEventListener("keydown", (e) => {
       if (e.key !== "Enter" || e.shiftKey) return;
@@ -1571,15 +1589,19 @@
       e.preventDefault();
       e.stopPropagation();
 
-      if (range.length > 0) {
-        quill.deleteText(range.index, range.length, "user");
+      quillEnterKeyHandling = true; // 處理期間先暫停 applyDefaultFontOnFocus,避免互相干擾
+      try {
+        if (range.length > 0) {
+          quill.deleteText(range.index, range.length, "user");
+        }
+        quill.insertText(range.index, "\n", "user");
+        quill.setSelection(range.index + 1, 0, "user");
+      } finally {
+        quillEnterKeyHandling = false;
       }
-      quill.insertText(range.index, "\n", "user");
-      quill.setSelection(range.index + 1, 0, "user");
-      // 不管上一行原本用的是什麼字體(Sans Serif 或其他),換到新的一行一律固定重設成芫荽體。
-      // 因為這裡是自己控制的插入流程,可以直接、安全地套用,不用再靠不可靠的 setTimeout 做法。
-      quill.format("font", "iansui");
-      forceFontPickerDisplay(quill, "iansui"); // 手動同步下拉選單顯示,不依賴 Quill 自己的畫面更新
+
+      // 所有操作都確定完成、旗標也解除之後,才唯一一次檢查並套用預設格式
+      applyDefaultFontIfUnset(quill, quill.getSelection());
     }, true); // 用 capture 階段監聽,確保搶在 Quill 自己的鍵盤處理邏輯之前執行
   }
 
@@ -1590,12 +1612,8 @@
   // 這裡看到的會是那個明確的值,不會被誤蓋掉。
   function applyDefaultFontOnFocus(quill) {
     quill.on("selection-change", (range) => {
-      if (!range) return; // 失焦,不用處理
-      const format = quill.getFormat(range.index, range.length);
-      if (!format.font) {
-        quill.format("font", "iansui");
-        forceFontPickerDisplay(quill, "iansui"); // 手動同步下拉選單顯示,不依賴 Quill 自己的畫面更新
-      }
+      if (quillEnterKeyHandling) return; // Enter 鍵正在處理中,先不要插手,等它處理完自己會補一次
+      applyDefaultFontIfUnset(quill, range);
     });
   }
 
@@ -3062,11 +3080,7 @@
         }
         if (!range) return;
 
-        const currentFormat = quillItinerary.getFormat(range.index, range.length);
-        if (!currentFormat.font) {
-          quillItinerary.format("font", "iansui");
-          forceFontPickerDisplay(quillItinerary, "iansui"); // 直接同步選單畫面,不依賴 Quill 自己的更新機制
-        }
+        applyDefaultFontIfUnset(quillItinerary, range);
       }, 0);
     }
 
@@ -3605,11 +3619,7 @@
         }
         if (!range) return;
 
-        const currentFormat = quillNotes.getFormat(range.index, range.length);
-        if (!currentFormat.font) {
-          quillNotes.format("font", "iansui");
-          forceFontPickerDisplay(quillNotes, "iansui"); // 直接同步選單畫面,不依賴 Quill 自己的更新機制
-        }
+        applyDefaultFontIfUnset(quillNotes, range);
       }, 0);
     }
     const notesBtn = document.querySelector('#trip-sub-nav button[data-sub="notes"]');
