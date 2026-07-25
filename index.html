@@ -913,6 +913,7 @@
         <input type="text" id="user-add-name" placeholder="顯示名稱(選填)" style="flex:1; min-width:140px;" />
         <select id="user-add-role">
           <option value="member">一般成員</option>
+          <option value="vip">VIP會員</option>
           <option value="admin">管理員</option>
         </select>
         <button class="primary" id="user-add-btn">新增</button>
@@ -4930,86 +4931,133 @@
     }
   }
 
+  const USER_ROLE_LABELS = { admin: "管理員", vip: "VIP會員", member: "一般成員" };
+
   function renderUserRow(u) {
     const tr = document.createElement("tr");
-
     const emailTd = document.createElement("td");
-    emailTd.textContent = u.email;
-    tr.appendChild(emailTd);
-
     const nameTd = document.createElement("td");
-    nameTd.textContent = u.display_name || "";
-    tr.appendChild(nameTd);
-
     const roleTd = document.createElement("td");
-    const roleSelect = document.createElement("select");
-    [["member", "一般成員"], ["admin", "管理員"]].forEach(([value, label]) => {
-      const opt = document.createElement("option");
-      opt.value = value;
-      opt.textContent = label;
-      if ((u.role || "member") === value) opt.selected = true;
-      roleSelect.appendChild(opt);
-    });
-    roleSelect.addEventListener("change", async () => {
-      const prevValue = u.role === "admin" ? "admin" : "member";
-      try {
-        await apiFetch(`/api/users/${encodeURIComponent(u.email)}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ role: roleSelect.value }),
-        });
-        u.role = roleSelect.value;
-      } catch (err) {
-        roleSelect.value = prevValue; // 失敗就恢復原本選項(例如「最後一位管理員不能降級」這個保護擋下來的情況)
-        alert("更新權限失敗:" + err.message);
-      }
-    });
-    roleTd.appendChild(roleSelect);
-    tr.appendChild(roleTd);
-
     const createdTd = document.createElement("td");
     createdTd.textContent = u.created_at || "";
-    tr.appendChild(createdTd);
-
     const actionTd = document.createElement("td");
-    const editBtn = document.createElement("button");
-    editBtn.className = "ghost";
-    editBtn.textContent = "改名稱";
-    editBtn.addEventListener("click", async () => {
-      const newName = prompt("輸入這個帳號要顯示的名稱:", u.display_name || "");
-      if (newName === null) return;
-      try {
-        await apiFetch(`/api/users/${encodeURIComponent(u.email)}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ displayName: newName }),
-        });
-        u.display_name = newName;
-        nameTd.textContent = newName;
-      } catch (err) {
-        alert("更新失敗:" + err.message);
-      }
-    });
-    actionTd.appendChild(editBtn);
-
-    const deleteBtn = document.createElement("button");
-    deleteBtn.className = "danger";
-    deleteBtn.textContent = "移除";
-    deleteBtn.style.marginLeft = "6px";
-    deleteBtn.addEventListener("click", async () => {
-      if (!confirm(`確定要移除帳號 ${u.email} 嗎?移除後這個人將無法再登入(除非他也設定在 WHITELIST_EMAILS 裡)。`)) return;
-      try {
-        await apiFetch(`/api/users/${encodeURIComponent(u.email)}`, { method: "DELETE" });
-        tr.remove();
-        const tbody = document.getElementById("users-tbody");
-        document.getElementById("users-empty").style.display = tbody.children.length === 0 ? "block" : "none";
-      } catch (err) {
-        alert("移除失敗:" + err.message);
-      }
-    });
-    actionTd.appendChild(deleteBtn);
+    tr.appendChild(emailTd);
+    tr.appendChild(nameTd);
+    tr.appendChild(roleTd);
+    tr.appendChild(createdTd);
     tr.appendChild(actionTd);
 
+    // 檢視模式:全部欄位都是純文字,不能直接改——一定要先按「修改」進入編輯模式,
+    // 真的有改過什麼欄位、按下「儲存」才會送出更新;沒有改動任何欄位的話不會呼叫 API。
+    function renderViewMode() {
+      emailTd.textContent = u.email;
+      nameTd.textContent = u.display_name || "";
+      roleTd.textContent = USER_ROLE_LABELS[u.role] || "一般成員";
+
+      actionTd.innerHTML = "";
+      const editBtn = document.createElement("button");
+      editBtn.className = "ghost";
+      editBtn.textContent = "修改";
+      editBtn.addEventListener("click", renderEditMode);
+      actionTd.appendChild(editBtn);
+
+      const deleteBtn = document.createElement("button");
+      deleteBtn.className = "ghost"; // 不用紅字,跟其他一般操作按鈕維持一致的視覺重量
+      deleteBtn.textContent = "移除";
+      deleteBtn.style.marginLeft = "6px";
+      deleteBtn.addEventListener("click", async () => {
+        if (!confirm(`確定要移除帳號 ${u.email} 嗎?移除後這個人將無法再登入(除非他也設定在 WHITELIST_EMAILS 裡)。`)) return;
+        try {
+          await apiFetch(`/api/users/${encodeURIComponent(u.email)}`, { method: "DELETE" });
+          tr.remove();
+          const tbody = document.getElementById("users-tbody");
+          document.getElementById("users-empty").style.display = tbody.children.length === 0 ? "block" : "none";
+        } catch (err) {
+          alert("移除失敗:" + err.message);
+        }
+      });
+      actionTd.appendChild(deleteBtn);
+    }
+
+    // 編輯模式:email、顯示名稱、權限一次一起改,按「儲存」才會統一送出——
+    // 而且只會送出「真的被改過」的欄位,如果三個欄位都沒有改動,直接回到檢視模式,
+    // 不會呼叫 API、也不會有任何資料被異動。
+    function renderEditMode() {
+      const emailInput = document.createElement("input");
+      emailInput.type = "email";
+      emailInput.value = u.email;
+      emailInput.style.width = "100%";
+      emailTd.innerHTML = "";
+      emailTd.appendChild(emailInput);
+
+      const nameInput = document.createElement("input");
+      nameInput.type = "text";
+      nameInput.value = u.display_name || "";
+      nameInput.style.width = "100%";
+      nameTd.innerHTML = "";
+      nameTd.appendChild(nameInput);
+
+      const roleSelect = document.createElement("select");
+      [["member", "一般成員"], ["vip", "VIP會員"], ["admin", "管理員"]].forEach(([value, label]) => {
+        const opt = document.createElement("option");
+        opt.value = value;
+        opt.textContent = label;
+        if ((u.role || "member") === value) opt.selected = true;
+        roleSelect.appendChild(opt);
+      });
+      roleTd.innerHTML = "";
+      roleTd.appendChild(roleSelect);
+
+      actionTd.innerHTML = "";
+      const statusSpan = document.createElement("span");
+      statusSpan.className = "status-line";
+      statusSpan.style.marginRight = "8px";
+
+      const saveBtn = document.createElement("button");
+      saveBtn.className = "primary";
+      saveBtn.textContent = "儲存";
+      saveBtn.addEventListener("click", async () => {
+        const payload = {};
+        const newEmail = emailInput.value.trim();
+        const newName = nameInput.value.trim();
+        const newRole = roleSelect.value;
+        if (newEmail && newEmail.toLowerCase() !== u.email.toLowerCase()) payload.email = newEmail;
+        if (newName !== (u.display_name || "")) payload.displayName = newName;
+        if (newRole !== (u.role || "member")) payload.role = newRole;
+
+        if (Object.keys(payload).length === 0) {
+          // 三個欄位都沒有改動,直接回到檢視模式,不呼叫 API、不異動任何資料
+          renderViewMode();
+          return;
+        }
+
+        try {
+          await apiFetch(`/api/users/${encodeURIComponent(u.email)}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          if (payload.email) u.email = payload.email;
+          if (payload.displayName !== undefined) u.display_name = payload.displayName;
+          if (payload.role) u.role = payload.role;
+          renderViewMode();
+        } catch (err) {
+          statusSpan.textContent = "儲存失敗:" + err.message;
+        }
+      });
+
+      const cancelBtn = document.createElement("button");
+      cancelBtn.className = "ghost";
+      cancelBtn.textContent = "取消";
+      cancelBtn.style.marginLeft = "6px";
+      cancelBtn.addEventListener("click", renderViewMode);
+
+      actionTd.appendChild(statusSpan);
+      actionTd.appendChild(saveBtn);
+      actionTd.appendChild(cancelBtn);
+    }
+
+    renderViewMode();
     return tr;
   }
 
