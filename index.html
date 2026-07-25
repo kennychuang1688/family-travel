@@ -495,11 +495,13 @@
     font-family: "Iansui", "Noto Sans TC", sans-serif;
   }
   #itinerary-editor .ql-editor.ql-blank::before { color: rgba(59,42,33,0.35); font-style: normal; }
-  #itinerary-editor .ql-editor img { max-width: 100%; border-radius: 8px; margin: 8px 0; cursor: pointer; vertical-align: middle; }
-  #itinerary-editor .ql-editor img.itinerary-image-selected {
+  #itinerary-editor .ql-editor img, #notes-editor .ql-editor img {
+    max-width: 100%; border-radius: 8px; margin: 8px 0; cursor: pointer; vertical-align: middle;
+  }
+  #itinerary-editor .ql-editor img.itinerary-image-selected, #notes-editor .ql-editor img.itinerary-image-selected {
     outline: 2px solid var(--gold); outline-offset: 2px;
   }
-  #itinerary-image-resize-handle {
+  .itinerary-image-resize-handle {
     display: none; position: fixed; width: 16px; height: 16px; z-index: 500;
     background: var(--gold); border: 2px solid #fff; border-radius: 50%;
     box-shadow: 0 1px 4px rgba(0,0,0,0.3); cursor: nwse-resize;
@@ -1541,7 +1543,8 @@
 
     fixReliableEnterKey(quillItinerary);
     interceptCardFieldFontPicker(quillItinerary);
-    initItineraryImageResize();
+    const selectItineraryImage = initQuillImageResize(quillItinerary, () => itineraryDayMode, scheduleAutoSave, "itinerary-image-resize-handle");
+    clearItineraryImageSelection = () => selectItineraryImage(null);
   }
 
   // Quill(1.3.7)內建處理 Enter 鍵的邏輯,在游標剛好落在「一整段沒有空格的長文字,
@@ -1783,13 +1786,20 @@
     });
 
     fixReliableEnterKey(quillNotes);
+    initQuillImageResize(quillNotes, () => tripNotesMode, scheduleTripNotesAutoSave, "notes-image-resize-handle");
     quillNotes.enable(false); // 預設先進入預覽(唯讀)模式,點兩下分頁按鈕才會進入編輯模式
   }
 
-  // ---------- 行程內文裡插入的圖片:編輯模式下可以點選圖片、拖曳右下角控點自由放大縮小 ----------
-  function initItineraryImageResize() {
+  // ---------- 圖片:編輯模式下可以點選圖片、拖曳右下角控點自由放大縮小(行程規劃、注意事項共用) ----------
+  // quill:要套用的 Quill 編輯器實體
+  // getMode:回傳目前是 "edit" 還是 "preview" 的函式(itineraryDayMode 或 tripNotesMode)
+  // scheduleSaveFn:調整完尺寸、或刪除圖片後要呼叫的自動儲存函式
+  // handleId:這個編輯器專屬的控點元素 id(兩個編輯器各自獨立一個控點,避免互相干擾)
+  // 回傳 selectImage 函式,讓外部(例如清掉殘留的選取狀態)也能呼叫。
+  function initQuillImageResize(quill, getMode, scheduleSaveFn, handleId) {
     const handle = document.createElement("div");
-    handle.id = "itinerary-image-resize-handle";
+    handle.id = handleId;
+    handle.className = "itinerary-image-resize-handle";
     document.body.appendChild(handle);
 
     let selectedImg = null;
@@ -1815,7 +1825,6 @@
         handle.style.display = "none";
       }
     }
-    clearItineraryImageSelection = () => selectImage(null);
 
     // 圖片被選取(顯示金色外框跟控點)之後,按鍵盤的 Delete / Backspace 可以直接刪除這張圖片。
     // 因為圖片是用滑鼠點選的方式選取,不是靠 Quill 本身的文字游標選取,所以刪除鍵預設不會生效,
@@ -1837,25 +1846,25 @@
       e.preventDefault();
       const blot = Quill.find(selectedImg);
       if (blot) {
-        const index = quillItinerary.getIndex(blot);
-        quillItinerary.deleteText(index, 1, "user");
+        const index = quill.getIndex(blot);
+        quill.deleteText(index, 1, "user");
       } else {
         selectedImg.remove();
       }
       selectImage(null);
-      scheduleAutoSave();
+      scheduleSaveFn();
     });
 
-    quillItinerary.root.addEventListener("click", (e) => {
+    quill.root.addEventListener("click", (e) => {
       if (e.target.tagName === "IMG") {
-        if (itineraryDayMode === "edit") {
+        if (getMode() === "edit") {
           selectImage(e.target);
         } else {
           openItineraryImageLightbox(e.target.src);
         }
         return;
       }
-      if (itineraryDayMode === "edit") selectImage(null);
+      if (getMode() === "edit") selectImage(null);
     });
 
     // 使用者捲動、切換分頁、或視窗大小改變時,控點要跟著圖片重新定位,否則位置會偏掉
@@ -1874,7 +1883,7 @@
       if (!dragging || !selectedImg) return;
       const delta = clientX - dragStartX;
       // 最小 24px(再小手把會不好抓,但已經足夠縮成小圖示大小);最大不超過編輯區寬度,避免圖片跑到外面去
-      const maxWidth = quillItinerary.root.clientWidth;
+      const maxWidth = quill.root.clientWidth;
       const newWidth = Math.min(maxWidth, Math.max(24, dragStartWidth + delta));
       selectedImg.style.width = newWidth + "px";
       selectedImg.style.height = "auto"; // 高度自動依比例縮放,不會變形
@@ -1885,7 +1894,7 @@
       if (!dragging) return;
       dragging = false;
       document.body.style.userSelect = "";
-      scheduleAutoSave(); // 存下調整後的尺寸
+      scheduleSaveFn(); // 存下調整後的尺寸
     }
 
     handle.addEventListener("mousedown", (e) => { e.preventDefault(); startDrag(e.clientX); });
@@ -1899,9 +1908,11 @@
     // 切換預覽模式、切換分頁、或點擊其他地方時,取消選取、隱藏控點
     document.addEventListener("click", (e) => {
       if (e.target === handle) return;
-      if (e.target.tagName === "IMG" && quillItinerary.root.contains(e.target)) return;
+      if (e.target.tagName === "IMG" && quill.root.contains(e.target)) return;
       selectImage(null);
     });
+
+    return selectImage;
   }
 
   // ---------- 書籤連結(跨天內部跳轉) ----------
@@ -3672,6 +3683,14 @@
     const toolbarEl = document.getElementById("notes-toolbar");
     if (toolbarEl) toolbarEl.style.display = isEdit ? "" : "none";
     if (quillNotes) quillNotes.enable(isEdit);
+    if (!isEdit) {
+      // 切到預覽模式,取消圖片的選取狀態、隱藏調整尺寸的控點
+      const resizeHandle = document.getElementById("notes-image-resize-handle");
+      if (resizeHandle) resizeHandle.style.display = "none";
+      document.querySelectorAll("#notes-editor .itinerary-image-selected").forEach((img) => {
+        img.classList.remove("itinerary-image-selected");
+      });
+    }
     const notesBtn = document.querySelector('#trip-sub-nav button[data-sub="notes"]');
     if (notesBtn) notesBtn.textContent = "注意事項" + (isEdit ? "(編)" : "(預)");
   }
