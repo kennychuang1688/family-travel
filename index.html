@@ -437,8 +437,13 @@
   .itinerary-card-desc {
     font-size: 13px; min-height: 30px; line-height: 1.45; cursor: text;
   }
-  /* 說明欄位是 contenteditable div,沒有內容時用 :empty 搭配 data-placeholder 顯示提示文字 */
-  .itinerary-card-desc:empty:before { content: attr(data-placeholder); color: #9a8f86; pointer-events: none; }
+  /* 說明、標題欄位都是 contenteditable div,沒有內容時用 :empty 搭配 data-placeholder 顯示提示文字
+     (contenteditable 天生不支援 <textarea>/<input> 的 placeholder 屬性,要自己用 CSS 補) */
+  .itinerary-card-desc:empty:before,
+  .itinerary-card-title:empty:before {
+    content: attr(data-placeholder); color: #9a8f86; pointer-events: none;
+  }
+  .itinerary-card-title:empty:before { font-weight: 400; } /* 標題本身是粗體,提示文字不用跟著粗 */
   .itinerary-card-desc a { color: var(--gold); text-decoration: underline; }
   .itinerary-card-right { display: flex; flex-direction: column; justify-content: space-between; align-items: center; }
   .itinerary-card-right button {
