@@ -28,6 +28,16 @@
   }
   #itinerary-editor .ql-editor .ql-font-iansui, #notes-editor .ql-editor .ql-font-iansui { font-family: "Iansui", "Noto Sans TC", sans-serif; }
   #itinerary-editor .ql-editor .ql-font-sans, #notes-editor .ql-editor .ql-font-sans { font-family: "Noto Sans TC", Arial, sans-serif; }
+  /* 選單預設(還沒有明確選過任何字型)的狀態,也顯示「芫荽體」,跟畫面上實際的視覺預設一致。
+     下面 [data-value="sans"] 那組規則因為多了屬性選擇器,優先權比這條高,所以明確選過
+     Sans Serif 的地方還是會正確顯示「Sans Serif」,不會被這條蓋掉。 */
+  #itinerary-toolbar .ql-font .ql-picker-label::before,
+  #itinerary-toolbar .ql-font .ql-picker-item::before,
+  #notes-toolbar .ql-font .ql-picker-label::before,
+  #notes-toolbar .ql-font .ql-picker-item::before {
+    content: "芫荽體";
+    font-family: "Iansui", "Noto Sans TC", sans-serif;
+  }
   #itinerary-toolbar .ql-font .ql-picker-label[data-value="iansui"]::before,
   #itinerary-toolbar .ql-font .ql-picker-item[data-value="iansui"]::before,
   #notes-toolbar .ql-font .ql-picker-label[data-value="iansui"]::before,
