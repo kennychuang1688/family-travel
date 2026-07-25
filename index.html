@@ -1826,64 +1826,39 @@
   // scheduleSaveFn:調整完尺寸、或刪除圖片後要呼叫的自動儲存函式
   // handleId:這個編輯器專屬的控點元素 id(兩個編輯器各自獨立一個控點,避免互相干擾)
   // 回傳 selectImage 函式,讓外部(例如清掉殘留的選取狀態)也能呼叫。
+  // 每個套用「圖片可以縮放」的編輯器(行程規劃、注意事項),各自的狀態(選到哪張圖片、
+  // 控點元素等)分開存放在這裡;但底下真正「全域」的事件監聽(滑鼠移動、放開滑鼠、
+  // 觸控、鍵盤刪除、捲動、視窗大小改變)只註冊一次,共用同一組,監聽到事件時再自己
+  // 判斷要對哪一個編輯器實例做事——不要每多一個編輯器套用這個功能,就整組全域監聽
+  // 也跟著複製一份,那樣不管有沒有在跟圖片互動,每次滑鼠移動都要白白多跑好幾次檢查。
+  const imageResizeInstances = [];
+
   function initQuillImageResize(quill, getMode, scheduleSaveFn, handleId) {
     const handle = document.createElement("div");
     handle.id = handleId;
     handle.className = "itinerary-image-resize-handle";
     document.body.appendChild(handle);
 
-    let selectedImg = null;
-    let dragging = false;
-    let dragStartX = 0;
-    let dragStartWidth = 0;
+    const state = { selectedImg: null, dragging: false, dragStartX: 0, dragStartWidth: 0 };
 
     function positionHandle() {
-      if (!selectedImg) return;
-      const rect = selectedImg.getBoundingClientRect();
+      if (!state.selectedImg) return;
+      const rect = state.selectedImg.getBoundingClientRect();
       handle.style.left = rect.right - 9 + "px";
       handle.style.top = rect.bottom - 9 + "px";
       handle.style.display = "block";
     }
 
     function selectImage(img) {
-      if (selectedImg) selectedImg.classList.remove("itinerary-image-selected");
-      selectedImg = img;
-      if (selectedImg) {
-        selectedImg.classList.add("itinerary-image-selected");
+      if (state.selectedImg) state.selectedImg.classList.remove("itinerary-image-selected");
+      state.selectedImg = img;
+      if (state.selectedImg) {
+        state.selectedImg.classList.add("itinerary-image-selected");
         positionHandle();
       } else {
         handle.style.display = "none";
       }
     }
-
-    // 圖片被選取(顯示金色外框跟控點)之後,按鍵盤的 Delete / Backspace 可以直接刪除這張圖片。
-    // 因為圖片是用滑鼠點選的方式選取,不是靠 Quill 本身的文字游標選取,所以刪除鍵預設不會生效,
-    // 這裡另外監聽鍵盤事件,判斷目前有沒有選取圖片,有的話就手動把這張圖片從內文中移除。
-    document.addEventListener("keydown", (e) => {
-      if (!selectedImg) return;
-      if (!document.body.contains(selectedImg)) {
-        // 圖片已經不在畫面上了(例如切換到別的日期,內容整個被換掉),
-        // 這是一個過期的殘留參考,清掉它,不要繼續把接下來所有的 Delete/Backspace 都吃掉。
-        selectImage(null);
-        return;
-      }
-      if (e.key !== "Delete" && e.key !== "Backspace") return;
-      // 如果游標正在某個輸入欄位(卡片欄位、或其他表單)裡打字,刪除鍵應該是用來刪文字,
-      // 不能不分青紅皂白就把圖片刪掉
-      const activeTag = document.activeElement ? document.activeElement.tagName : "";
-      if (activeTag === "INPUT" || activeTag === "TEXTAREA" || activeTag === "SELECT") return;
-
-      e.preventDefault();
-      const blot = Quill.find(selectedImg);
-      if (blot) {
-        const index = quill.getIndex(blot);
-        quill.deleteText(index, 1, "user");
-      } else {
-        selectedImg.remove();
-      }
-      selectImage(null);
-      scheduleSaveFn();
-    });
 
     quill.root.addEventListener("click", (e) => {
       if (e.target.tagName === "IMG") {
@@ -1897,53 +1872,101 @@
       if (getMode() === "edit") selectImage(null);
     });
 
-    // 使用者捲動、切換分頁、或視窗大小改變時,控點要跟著圖片重新定位,否則位置會偏掉
-    window.addEventListener("scroll", () => { if (selectedImg) positionHandle(); }, true);
-    window.addEventListener("resize", () => { if (selectedImg) positionHandle(); });
-
     function startDrag(clientX) {
-      if (!selectedImg) return;
-      dragging = true;
-      dragStartX = clientX;
-      dragStartWidth = selectedImg.getBoundingClientRect().width;
+      if (!state.selectedImg) return;
+      state.dragging = true;
+      state.dragStartX = clientX;
+      state.dragStartWidth = state.selectedImg.getBoundingClientRect().width;
       document.body.style.userSelect = "none";
     }
 
     function moveDrag(clientX) {
-      if (!dragging || !selectedImg) return;
-      const delta = clientX - dragStartX;
+      if (!state.dragging || !state.selectedImg) return;
+      const delta = clientX - state.dragStartX;
       // 最小 24px(再小手把會不好抓,但已經足夠縮成小圖示大小);最大不超過編輯區寬度,避免圖片跑到外面去
       const maxWidth = quill.root.clientWidth;
-      const newWidth = Math.min(maxWidth, Math.max(24, dragStartWidth + delta));
-      selectedImg.style.width = newWidth + "px";
-      selectedImg.style.height = "auto"; // 高度自動依比例縮放,不會變形
+      const newWidth = Math.min(maxWidth, Math.max(24, state.dragStartWidth + delta));
+      state.selectedImg.style.width = newWidth + "px";
+      state.selectedImg.style.height = "auto"; // 高度自動依比例縮放,不會變形
       positionHandle();
     }
 
     function endDrag() {
-      if (!dragging) return;
-      dragging = false;
+      if (!state.dragging) return;
+      state.dragging = false;
       document.body.style.userSelect = "";
       scheduleSaveFn(); // 存下調整後的尺寸
     }
 
     handle.addEventListener("mousedown", (e) => { e.preventDefault(); startDrag(e.clientX); });
-    document.addEventListener("mousemove", (e) => moveDrag(e.clientX));
-    document.addEventListener("mouseup", endDrag);
-
     handle.addEventListener("touchstart", (e) => { startDrag(e.touches[0].clientX); }, { passive: true });
-    document.addEventListener("touchmove", (e) => { if (dragging) moveDrag(e.touches[0].clientX); }, { passive: true });
-    document.addEventListener("touchend", endDrag);
 
-    // 切換預覽模式、切換分頁、或點擊其他地方時,取消選取、隱藏控點
-    document.addEventListener("click", (e) => {
-      if (e.target === handle) return;
-      if (e.target.tagName === "IMG" && quill.root.contains(e.target)) return;
-      selectImage(null);
-    });
+    imageResizeInstances.push({ quill, handle, state, positionHandle, selectImage, moveDrag, endDrag, scheduleSaveFn });
 
     return selectImage;
   }
+
+  // 圖片被選取(顯示金色外框跟控點)之後,按鍵盤的 Delete / Backspace 可以直接刪除這張圖片。
+  // 因為圖片是用滑鼠點選的方式選取,不是靠 Quill 本身的文字游標選取,所以刪除鍵預設不會生效,
+  // 這裡另外監聽鍵盤事件,判斷目前有沒有選取圖片,有的話就手動把這張圖片從內文中移除。
+  document.addEventListener("keydown", (e) => {
+    for (const inst of imageResizeInstances) {
+      if (!inst.state.selectedImg) continue;
+      if (!document.body.contains(inst.state.selectedImg)) {
+        // 圖片已經不在畫面上了(例如切換到別的日期,內容整個被換掉),
+        // 這是一個過期的殘留參考,清掉它,不要繼續把接下來所有的 Delete/Backspace 都吃掉。
+        inst.selectImage(null);
+        continue;
+      }
+      if (e.key !== "Delete" && e.key !== "Backspace") continue;
+      // 如果游標正在某個輸入欄位(卡片欄位、或其他表單)裡打字,刪除鍵應該是用來刪文字,
+      // 不能不分青紅皂白就把圖片刪掉
+      const activeTag = document.activeElement ? document.activeElement.tagName : "";
+      if (activeTag === "INPUT" || activeTag === "TEXTAREA" || activeTag === "SELECT") continue;
+
+      e.preventDefault();
+      const blot = Quill.find(inst.state.selectedImg);
+      if (blot) {
+        const index = inst.quill.getIndex(blot);
+        inst.quill.deleteText(index, 1, "user");
+      } else {
+        inst.state.selectedImg.remove();
+      }
+      inst.selectImage(null);
+      inst.scheduleSaveFn();
+    }
+  });
+
+  // 使用者捲動、切換分頁、或視窗大小改變時,控點要跟著圖片重新定位,否則位置會偏掉
+  window.addEventListener("scroll", () => {
+    imageResizeInstances.forEach((inst) => { if (inst.state.selectedImg) inst.positionHandle(); });
+  }, true);
+  window.addEventListener("resize", () => {
+    imageResizeInstances.forEach((inst) => { if (inst.state.selectedImg) inst.positionHandle(); });
+  });
+
+  document.addEventListener("mousemove", (e) => {
+    imageResizeInstances.forEach((inst) => inst.moveDrag(e.clientX));
+  });
+  document.addEventListener("mouseup", () => {
+    imageResizeInstances.forEach((inst) => inst.endDrag());
+  });
+
+  document.addEventListener("touchmove", (e) => {
+    imageResizeInstances.forEach((inst) => { if (inst.state.dragging) inst.moveDrag(e.touches[0].clientX); });
+  }, { passive: true });
+  document.addEventListener("touchend", () => {
+    imageResizeInstances.forEach((inst) => inst.endDrag());
+  });
+
+  // 切換預覽模式、切換分頁、或點擊其他地方時,取消選取、隱藏控點
+  document.addEventListener("click", (e) => {
+    imageResizeInstances.forEach((inst) => {
+      if (e.target === inst.handle) return;
+      if (e.target.tagName === "IMG" && inst.quill.root.contains(e.target)) return;
+      inst.selectImage(null);
+    });
+  });
 
   // ---------- 書籤連結(跨天內部跳轉) ----------
 
