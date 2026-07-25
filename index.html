@@ -1622,6 +1622,21 @@
   // 那個元素的 change 事件,用 capture 階段搶在 Quill 自己的處理邏輯之前執行——如果判斷要攔截,
   // 就呼叫 stopImmediatePropagation() 不讓 Quill 也跟著把這次選擇套用到行程內文的目前游標位置上。
   function interceptCardFieldFontPicker(quill) {
+    // 只要目前實際的選取範圍不是落在任何卡片欄位裡面,就清掉可能殘留的舊卡片欄位紀錄——
+    // 不然選過一次卡片欄位之後,那個紀錄會一直卡著,之後不管在哪裡選字、套字型,
+    // 都會被誤導套用到「上一次用過的卡片欄位」上,而不是這次真正選取的地方。
+    // 這裡刻意寫得很單純,只清一個變數,不做任何格式套用或搬移游標的動作,
+    // 避免重蹈之前那個「持續監聽游標移動、動態呼叫 format()」機制的覆轍。
+    quill.on("selection-change", (range) => {
+      if (!range) return; // 失焦,不用處理
+      const sel = window.getSelection();
+      const anchorEl = sel && sel.anchorNode &&
+        (sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement);
+      if (!anchorEl || !anchorEl.closest(".itinerary-card-embed")) {
+        lastCardFieldContext = null;
+      }
+    });
+
     const toolbarEl = quill.getModule("toolbar").container;
     const select = toolbarEl.querySelector("select.ql-font");
     if (!select) return;
