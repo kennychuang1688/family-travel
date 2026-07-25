@@ -1262,7 +1262,6 @@
   let userIsAdmin = false;
   let currentTripId = null;
   let quillItinerary = null;
-  let clearItineraryImageSelection = null; // initQuillItinerary() 裡會指派成 () => selectImage(null),讓其他地方也能清掉殘留的圖片選取狀態
   let itineraryDayContents = {};
   let currentItineraryDate = null;
   let currentTripTitle = "";
@@ -1554,8 +1553,7 @@
     fixReliableEnterKey(quillItinerary);
     interceptCardFieldFontPicker(quillItinerary);
     syncFontPickerDisplayOnSelection(quillItinerary);
-    const selectItineraryImage = initQuillImageResize(quillItinerary, () => itineraryDayMode, scheduleAutoSave, "itinerary-image-resize-handle");
-    clearItineraryImageSelection = () => selectItineraryImage(null);
+    initQuillImageResize(quillItinerary, () => itineraryDayMode, scheduleAutoSave, "itinerary-image-resize-handle");
   }
 
   // Quill(1.3.7)內建處理 Enter 鍵的邏輯,在游標剛好落在「一整段沒有空格的長文字,
@@ -1595,6 +1593,18 @@
     const cardNode = fieldEl.closest(".itinerary-card-embed[data-card-id]");
     const cardId = cardNode ? cardNode.getAttribute("data-card-id") : null;
     return cardId ? currentItineraryCards.find((c) => c.id === cardId) : null;
+  }
+
+  // 記住「最後一次在這個欄位裡選取的文字範圍」,離開欄位(例如去點工具列的字型/連結按鈕)
+  // 時選取範圍會跟著記錄下來,這樣工具列的按鈕才知道要套用在這裡,而不是行程內文上。
+  // 標題、說明欄位共用這個邏輯,統一寫在這裡一個地方。
+  function trackCardFieldSelectionOnBlur(fieldEl) {
+    fieldEl.addEventListener("blur", () => {
+      const sel = window.getSelection();
+      if (sel.rangeCount > 0 && fieldEl.contains(sel.anchorNode) && !sel.isCollapsed) {
+        lastCardFieldContext = { type: "range", field: fieldEl, range: sel.getRangeAt(0).cloneRange() };
+      }
+    });
   }
 
   // 只同步「字型下拉選單畫面顯示什麼」,完全不去呼叫 quill.format()、setSelection()、
@@ -2920,14 +2930,7 @@
     titleInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter") e.preventDefault(); // 行程名稱不允許按 Enter 手動換行
     });
-    // 記住「最後一次在這個標題欄位裡選取的文字範圍」,離開欄位(例如去點工具列的字型/連結按鈕)
-    // 時選取範圍會跟著記錄下來,這樣工具列的按鈕才知道要套用在這裡,而不是行程內文上。
-    titleInput.addEventListener("blur", () => {
-      const sel = window.getSelection();
-      if (sel.rangeCount > 0 && titleInput.contains(sel.anchorNode) && !sel.isCollapsed) {
-        lastCardFieldContext = { type: "range", field: titleInput, range: sel.getRangeAt(0).cloneRange() };
-      }
-    });
+    trackCardFieldSelectionOnBlur(titleInput);
     trackFieldUndo(titleInput, card, "title");
     restrictSelectAllToField(titleInput);
 
@@ -2950,14 +2953,7 @@
         document.execCommand("insertLineBreak");
       }
     });
-    // 記住「最後一次在這個說明欄位裡選取的文字範圍」,離開欄位(例如去點工具列的連結按鈕)時
-    // 選取範圍會跟著記錄下來,這樣工具列的連結按鈕才知道要把連結套用在這裡,而不是主要行程內文上。
-    descInput.addEventListener("blur", () => {
-      const sel = window.getSelection();
-      if (sel.rangeCount > 0 && descInput.contains(sel.anchorNode) && !sel.isCollapsed) {
-        lastCardFieldContext = { type: "range", field: descInput, range: sel.getRangeAt(0).cloneRange() };
-      }
-    });
+    trackCardFieldSelectionOnBlur(descInput);
     trackFieldUndo(descInput, card, "description");
     restrictSelectAllToField(descInput);
 
