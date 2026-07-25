@@ -3027,6 +3027,24 @@
     if (toolbarEl) toolbarEl.style.display = isEdit ? "" : "none";
     if (quillItinerary) quillItinerary.enable(isEdit);
 
+    if (isEdit && quillItinerary) {
+      // 進入編輯模式的當下就直接套用芫荽體,不要等使用者自己點進文字內容裡才觸發——
+      // 單純點分頁按鈕切換到編輯模式,並不會讓編輯器「真的拿到焦點」,所以不能只靠
+      // applyDefaultFontOnFocus 那個監聽,這裡额外主動套用一次。
+      // 用 setTimeout 延到下一輪事件迴圈,確保 enable() 真的生效之後再操作,比較可靠。
+      setTimeout(() => {
+        if (itineraryDayMode !== "edit") return; // 使用者可能在這一瞬間又切回預覽了,不要多此一舉
+        // 這裡是程式自己呼叫 focus(),不是使用者真的用滑鼠點擊——原本「點掉圖片選取狀態」
+        // 的機制只有滑鼠點擊才會觸發,程式自動 focus 會繞過那個機制,所以先主動清掉一次。
+        if (clearItineraryImageSelection) clearItineraryImageSelection();
+        quillItinerary.focus();
+        const len = quillItinerary.getLength();
+        quillItinerary.setSelection(len, 0);
+        quillItinerary.format("font", "iansui");
+        forceFontPickerDisplay(quillItinerary, "iansui"); // 直接同步選單畫面,不依賴 Quill 自己的更新機制
+      }, 0);
+    }
+
     applyItineraryCardEditability(); // 用目前的預覽/編輯模式,重新套用內文中行程表格卡片是否可編輯
 
     if (!isEdit) {
@@ -3546,6 +3564,18 @@
     const toolbarEl = document.getElementById("notes-toolbar");
     if (toolbarEl) toolbarEl.style.display = isEdit ? "" : "none";
     if (quillNotes) quillNotes.enable(isEdit);
+    if (isEdit && quillNotes) {
+      // 跟行程規劃同樣的原因:單純點分頁按鈕切換到編輯模式,編輯器並不會「真的拿到焦點」,
+      // 所以要主動套用一次,不能只靠 applyDefaultFontOnFocus 那個監聽。
+      setTimeout(() => {
+        if (tripNotesMode !== "edit") return; // 使用者可能在這一瞬間又切回預覽了,不要多此一舉
+        quillNotes.focus();
+        const len = quillNotes.getLength();
+        quillNotes.setSelection(len, 0);
+        quillNotes.format("font", "iansui");
+        forceFontPickerDisplay(quillNotes, "iansui"); // 直接同步選單畫面,不依賴 Quill 自己的更新機制
+      }, 0);
+    }
     const notesBtn = document.querySelector('#trip-sub-nav button[data-sub="notes"]');
     if (notesBtn) notesBtn.textContent = "注意事項" + (isEdit ? "(編)" : "(預)");
   }
