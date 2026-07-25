@@ -540,6 +540,7 @@
   </div>
   <nav id="main-nav" style="display:none;">
     <button data-view="trips" class="active">旅遊行程</button>
+    <button data-view="checklist">事項清單</button>
     <button data-view="users" id="nav-users" style="display:none;">帳號管理</button>
     <button data-view="logs" id="nav-logs" style="display:none;">Log</button>
   </nav>
@@ -609,7 +610,6 @@
       <button data-sub="itinerary" class="active">行程規劃</button>
       <button data-sub="media">照片 / 影片</button>
       <button data-sub="expenses">費用花費</button>
-      <button data-sub="checklist">事項清單</button>
       <button data-sub="documents">其他文件</button>
       <button data-sub="notes">注意事項</button>
     </div>
@@ -803,33 +803,6 @@
       </div>
     </div>
 
-    <div id="trip-sub-checklist" class="trip-subview">
-      <div class="panel">
-        <div class="status-line" style="margin-bottom:14px;">這裡只會顯示你自己建立的項目,家人各自登入後看到的是各自獨立的清單。</div>
-        <h3 class="checklist-layer1-title">行李清單</h3>
-        <div style="display:flex; gap:10px; margin-bottom:8px; flex-wrap:wrap;">
-          <select id="checklist-bagtype-before">
-            <option value="隨身行李">隨身行李</option>
-            <option value="托運行李">托運行李</option>
-          </select>
-          <input type="text" id="checklist-input-before" placeholder="新增待辦事項..." style="flex:1; min-width:160px;" />
-          <button class="primary" id="checklist-add-btn-before">新增</button>
-        </div>
-        <div class="status-line" style="margin-bottom:16px;">提示:可用逗號分隔一次新增多筆,例如「充電器,牙刷,睡衣」會分成三筆待辦事項</div>
-        <div id="checklist-list-before"></div>
-        <div class="empty" id="checklist-empty-before" style="display:none;">目前沒有「行李清單」項目。</div>
-
-        <h3 class="checklist-layer1-title" style="margin-top:28px; padding-top:20px; border-top-width:1px; border-top-color:var(--line); border-top-style:solid;">旅遊期間</h3>
-        <div style="display:flex; gap:10px; margin-bottom:8px;">
-          <input type="text" id="checklist-input-during" placeholder="新增待辦事項..." style="flex:1;" />
-          <button class="primary" id="checklist-add-btn-during">新增</button>
-        </div>
-        <div class="status-line" style="margin-bottom:16px;">提示:可用逗號分隔一次新增多筆</div>
-        <div id="checklist-list-during" class="checklist-item-grid"></div>
-        <div class="empty" id="checklist-empty-during" style="display:none;">目前沒有「旅遊期間」待辦事項。</div>
-      </div>
-    </div>
-
     <div id="trip-sub-documents" class="trip-subview">
       <div class="panel">
         <h2>其他文件(電子機票、飯店訂單等)</h2>
@@ -867,6 +840,32 @@
   </div>
 
   <!-- 待辦事項 -->
+  <div id="view-checklist" class="view">
+    <div class="panel">
+      <h3 class="checklist-layer1-title">行李清單</h3>
+      <div style="display:flex; gap:10px; margin-bottom:8px; flex-wrap:wrap;">
+        <select id="checklist-bagtype-before">
+          <option value="隨身行李">隨身行李</option>
+          <option value="托運行李">托運行李</option>
+        </select>
+        <input type="text" id="checklist-input-before" placeholder="新增待辦事項..." style="flex:1; min-width:160px;" />
+        <button class="primary" id="checklist-add-btn-before">新增</button>
+      </div>
+      <div class="status-line" style="margin-bottom:16px;">提示:可用逗號分隔一次新增多筆,例如「充電器,牙刷,睡衣」會分成三筆待辦事項</div>
+      <div id="checklist-list-before"></div>
+      <div class="empty" id="checklist-empty-before" style="display:none;">目前沒有「行李清單」項目。</div>
+
+      <h3 class="checklist-layer1-title" style="margin-top:28px; padding-top:20px; border-top-width:1px; border-top-color:var(--line); border-top-style:solid;">旅遊期間</h3>
+      <div style="display:flex; gap:10px; margin-bottom:8px;">
+        <input type="text" id="checklist-input-during" placeholder="新增待辦事項..." style="flex:1;" />
+        <button class="primary" id="checklist-add-btn-during">新增</button>
+      </div>
+      <div class="status-line" style="margin-bottom:16px;">提示:可用逗號分隔一次新增多筆</div>
+      <div id="checklist-list-during" class="checklist-item-grid"></div>
+      <div class="empty" id="checklist-empty-during" style="display:none;">目前沒有「旅遊期間」待辦事項。</div>
+    </div>
+  </div>
+
   <!-- 帳號管理(管理員) -->
   <div id="view-users" class="view">
     <div class="panel">
@@ -2073,6 +2072,7 @@
       b.classList.toggle("active", b.dataset.view === name);
     });
     if (name === "trips") loadTrips();
+    if (name === "checklist") loadChecklist();
     if (name === "users") loadUsers();
     if (name === "logs") loadLogs();
   }
@@ -2244,10 +2244,12 @@
     }
   });
 
-  function renderTripsTable(trips) {
+  async function loadTrips() {
     const tbody = document.getElementById("trips-tbody");
     const emptyEl = document.getElementById("trips-empty");
     tbody.innerHTML = "";
+    const data = await apiFetch("/api/trips");
+    const trips = data.trips || [];
     emptyEl.style.display = trips.length === 0 ? "block" : "none";
 
     for (const t of trips) {
@@ -2300,13 +2302,6 @@
       tr.addEventListener("click", () => openTrip(t.id));
       tbody.appendChild(tr);
     }
-  }
-
-  async function loadTrips() {
-    // 不做快取:直接送出請求、等真正的資料回來再畫,確保永遠看到跟伺服器同步的最新狀態,
-    // 也不會因為「先畫舊資料」這個動作,讓送出網路請求的時間點被拖慢(即使只慢一點點)。
-    const data = await apiFetch("/api/trips");
-    renderTripsTable(data.trips || []);
   }
 
   function computeDateRange(start, end) {
@@ -2846,23 +2841,12 @@
       }
       if (node._hydrated) return; // 已經是活的,不要重建,避免打斷正在輸入的游標
       populateItineraryCardNode(node, card);
-      applyCardNodeEditability(node); // 剛長出來的卡片,套用一次目前的預覽/編輯狀態就好,不用整個文件重新掃一次
     });
+
+    applyItineraryCardEditability();
   }
 
-  // 依目前的預覽/編輯模式,套用到「單一一張」卡片節點——只在這張卡片剛被 hydrate 出來時呼叫一次。
-  function applyCardNodeEditability(node) {
-    const isEdit = itineraryDayMode === "edit";
-    node.querySelectorAll("input, select, textarea").forEach((el) => { el.disabled = !isEdit; });
-    node.querySelectorAll(".itinerary-card-desc").forEach((el) => { el.contentEditable = isEdit ? "true" : "false"; });
-    node.querySelectorAll(".itinerary-card-delete-btn, .itinerary-card-move-group, .itinerary-card-edit-link-btn, .itinerary-card-insert-after-btn")
-      .forEach((el) => { el.style.display = isEdit ? "" : "none"; });
-  }
-
-  // 依目前的預覽/編輯模式,套用到內文中「所有」已經填好內容的行程表格卡片。
-  // 這個版本會掃過整個編輯區,只在真正需要「一次套用到全部卡片」的時機呼叫——
-  // 也就是切換預覽/編輯模式、或切換到不同一天的時候(見 applyItineraryDayMode),
-  // 不要每次打字都呼叫,不然卡片一多,每個字都要重新掃一次全部卡片,會讓打字明顯感覺到頓。
+  // 依目前的預覽/編輯模式,套用到內文中所有已經填好內容的行程表格卡片
   function applyItineraryCardEditability() {
     const isEdit = itineraryDayMode === "edit";
     document.querySelectorAll("#itinerary-editor .itinerary-card-embed input, #itinerary-editor .itinerary-card-embed select, #itinerary-editor .itinerary-card-embed textarea")
@@ -2952,14 +2936,6 @@
     const isEdit = itineraryDayMode === "edit";
     if (toolbarEl) toolbarEl.style.display = isEdit ? "" : "none";
     if (quillItinerary) quillItinerary.enable(isEdit);
-
-    if (isEdit && quillItinerary) {
-      // 每次進入編輯模式(不管是切換到新的一天,還是在同一天裡從預覽切回編輯),
-      // 都把游標當下的格式預設成芫荽體——這只是設定「接下來打字要用什麼格式」,
-      // 不會去改動任何已經存在的文字,所以不管內容多寡,這都是很輕量的單一動作,
-      // 不會有效能疑慮。
-      quillItinerary.format("font", "iansui");
-    }
 
     applyItineraryCardEditability(); // 用目前的預覽/編輯模式,重新套用內文中行程表格卡片是否可編輯
 
@@ -3430,7 +3406,6 @@
     itinerary: async () => {}, // 開啟行程時已經帶入,不用另外載入
     media: loadMedia,
     expenses: async () => { await loadExchangeRates(); await loadExpenses(); },
-    checklist: loadChecklist,
     documents: loadDocuments,
     notes: async () => {}, // 跟行程規劃一樣,開啟行程時已經帶入,不用另外載入
   };
@@ -3480,11 +3455,6 @@
     const toolbarEl = document.getElementById("notes-toolbar");
     if (toolbarEl) toolbarEl.style.display = isEdit ? "" : "none";
     if (quillNotes) quillNotes.enable(isEdit);
-    if (isEdit && quillNotes) {
-      // 跟行程規劃的做法一樣:每次進入編輯模式,把游標當下的格式預設成芫荽體,
-      // 只影響「接下來要打的字」,不會動到已經存在的文字,是很輕量的單一動作。
-      quillNotes.format("font", "iansui");
-    }
     const notesBtn = document.querySelector('#trip-sub-nav button[data-sub="notes"]');
     if (notesBtn) notesBtn.textContent = "注意事項" + (isEdit ? "(編)" : "(預)");
   }
@@ -3519,10 +3489,6 @@
     document.querySelectorAll("#trip-sub-nav button[data-sub]").forEach((b) => {
       b.classList.toggle("active", b.dataset.sub === name);
     });
-    // 「事項清單」是每個人各自獨立的私人清單(見上面的說明),選到這個分頁時提醒一下這件事,
-    // 離開時恢復成原本的名稱,不要一直掛著這個提示。
-    const checklistBtn = document.querySelector('#trip-sub-nav button[data-sub="checklist"]');
-    if (checklistBtn) checklistBtn.textContent = name === "checklist" ? "事項清單(私)" : "事項清單";
     if (name !== "notes") {
       // 離開注意事項分頁,重置成預覽模式跟按鈕文字,下次點進來一律先看預覽,不要停在編輯模式
       tripNotesMode = "preview";
@@ -3796,7 +3762,7 @@
 
   // 縮圖載入佇列:限制同一時間最多幾張圖片真正在下載/解碼,不完全依賴瀏覽器
   // 自己的延遲載入判斷,避免手機在載入大量照片的行程時,同時間負擔太重而當機。
-  const IMAGE_LOAD_CONCURRENCY = 6;
+  const IMAGE_LOAD_CONCURRENCY = 4;
   let activeImageLoads = 0;
   const imageLoadQueue = [];
 
@@ -4571,9 +4537,8 @@
     const emptyDuring = document.getElementById("checklist-empty-during");
     listBefore.innerHTML = "";
     listDuring.innerHTML = "";
-    if (!currentTripId) return;
 
-    const data = await apiFetch(`/api/trips/${currentTripId}/checklist`);
+    const data = await apiFetch("/api/checklist");
     const items = data.items || [];
     const beforeItems = items.filter((i) => i.phase !== "during");
     const duringItems = items.filter((i) => i.phase === "during");
@@ -4599,7 +4564,6 @@
     const bagTypeSelect = document.getElementById(`checklist-bagtype-${phase}`); // 只有「行李清單」(before)這個分類才有
 
     addBtn.addEventListener("click", async () => {
-      if (!currentTripId) { alert("請先開啟一個行程"); return; }
       const raw = input.value.trim();
       if (!raw) return;
       const bagType = bagTypeSelect ? bagTypeSelect.value : undefined;
@@ -4607,7 +4571,7 @@
       const texts = raw.split(/[,,]/).map((s) => s.trim()).filter(Boolean);
       for (const text of texts) {
         try {
-          const result = await apiFetch(`/api/trips/${currentTripId}/checklist`, {
+          const result = await apiFetch("/api/checklist", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ text, phase, bagType }),
