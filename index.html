@@ -912,7 +912,7 @@
         <input type="email" id="user-add-email" placeholder="email" style="flex:1; min-width:200px;" />
         <input type="text" id="user-add-name" placeholder="顯示名稱(選填)" style="flex:1; min-width:140px;" />
         <select id="user-add-role">
-          <option value="member">一般成員</option>
+          <option value="member">一般會員</option>
           <option value="vip">VIP會員</option>
           <option value="admin">管理員</option>
         </select>
@@ -920,7 +920,7 @@
       </div>
       <div class="status-line" id="user-add-status" style="margin-bottom:16px;"></div>
       <table>
-        <thead><tr><th>Email</th><th>顯示名稱</th><th>權限</th><th>新增時間</th><th>操作</th></tr></thead>
+        <thead><tr><th>Email</th><th>姓名</th><th>權限</th><th>操作</th></tr></thead>
         <tbody id="users-tbody"></tbody>
       </table>
       <div class="empty" id="users-empty" style="display:none;">目前沒有透過這個介面新增的帳號。</div>
@@ -4931,20 +4931,17 @@
     }
   }
 
-  const USER_ROLE_LABELS = { admin: "管理員", vip: "VIP會員", member: "一般成員" };
+  const USER_ROLE_LABELS = { admin: "管理員", vip: "VIP會員", member: "一般會員" };
 
   function renderUserRow(u) {
     const tr = document.createElement("tr");
     const emailTd = document.createElement("td");
     const nameTd = document.createElement("td");
     const roleTd = document.createElement("td");
-    const createdTd = document.createElement("td");
-    createdTd.textContent = u.created_at || "";
     const actionTd = document.createElement("td");
     tr.appendChild(emailTd);
     tr.appendChild(nameTd);
     tr.appendChild(roleTd);
-    tr.appendChild(createdTd);
     tr.appendChild(actionTd);
 
     // 檢視模式:全部欄位都是純文字,不能直接改——一定要先按「修改」進入編輯模式,
@@ -4952,7 +4949,7 @@
     function renderViewMode() {
       emailTd.textContent = u.email;
       nameTd.textContent = u.display_name || "";
-      roleTd.textContent = USER_ROLE_LABELS[u.role] || "一般成員";
+      roleTd.textContent = USER_ROLE_LABELS[u.role] || "一般會員";
 
       actionTd.innerHTML = "";
       const editBtn = document.createElement("button");
@@ -4998,7 +4995,7 @@
       nameTd.appendChild(nameInput);
 
       const roleSelect = document.createElement("select");
-      [["member", "一般成員"], ["vip", "VIP會員"], ["admin", "管理員"]].forEach(([value, label]) => {
+      [["member", "一般會員"], ["vip", "VIP會員"], ["admin", "管理員"]].forEach(([value, label]) => {
         const opt = document.createElement("option");
         opt.value = value;
         opt.textContent = label;
