@@ -1557,6 +1557,7 @@
       // 因為這裡是自己控制的插入流程(不是讓 Quill 內建邏輯處理),可以直接、安全地
       // 順便把新的這一行預設套用芫荽體,不用再靠之前那種不可靠的 setTimeout + 強制 focus 做法。
       quill.format("font", "iansui");
+      quill.setSelection(range.index + 1, 0, "user"); // 再設一次選取範圍,強制工具列的下拉選單重新讀取、顯示正確的格式
     }, true); // 用 capture 階段監聽,確保搶在 Quill 自己的鍵盤處理邏輯之前執行
   }
 
@@ -1570,6 +1571,7 @@
       const format = quill.getFormat(range.index, range.length);
       if (!format.font) {
         quill.format("font", "iansui");
+        quill.setSelection(range.index, range.length, "silent"); // 強制工具列的下拉選單重新讀取、顯示正確的格式
       }
     });
   }
