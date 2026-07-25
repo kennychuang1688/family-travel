@@ -1666,6 +1666,12 @@
     // 這裡另外監聽鍵盤事件,判斷目前有沒有選取圖片,有的話就手動把這張圖片從內文中移除。
     document.addEventListener("keydown", (e) => {
       if (!selectedImg) return;
+      if (!document.body.contains(selectedImg)) {
+        // 圖片已經不在畫面上了(例如切換到別的日期,內容整個被換掉),
+        // 這是一個過期的殘留參考,清掉它,不要繼續把接下來所有的 Delete/Backspace 都吃掉。
+        selectImage(null);
+        return;
+      }
       if (e.key !== "Delete" && e.key !== "Backspace") return;
       // 如果游標正在某個輸入欄位(卡片欄位、或其他表單)裡打字,刪除鍵應該是用來刪文字,
       // 不能不分青紅皂白就把圖片刪掉
