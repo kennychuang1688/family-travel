@@ -3362,7 +3362,7 @@
       editBtn.textContent = "編輯";
       editBtn.addEventListener("click", () => startEditFlight(f));
       const deleteBtn = document.createElement("button");
-      deleteBtn.className = "danger";
+      deleteBtn.className = "ghost";
       deleteBtn.textContent = "刪除";
       deleteBtn.addEventListener("click", async () => {
         if (!confirm("確定要刪除這筆航班資訊嗎?")) return;
