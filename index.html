@@ -2963,28 +2963,6 @@
     if (toolbarEl) toolbarEl.style.display = isEdit ? "" : "none";
     if (quillItinerary) quillItinerary.enable(isEdit);
 
-    if (isEdit && quillItinerary) {
-      // 每次進入編輯模式(不管是切換到新的一天,還是在同一天裡從預覽切回編輯),
-      // 都把游標當下的格式預設成芫荽體——這只是設定「接下來打字要用什麼格式」,
-      // 不會去改動任何已經存在的文字,所以不管內容多寡,這都是很輕量的單一動作,
-      // 不會有效能疑慮。
-      // 注意:quill.format() 需要編輯器「真的有焦點」才會生效,如果緊接在按鈕點擊事件
-      // 裡就馬上呼叫,瀏覽器的焦點可能還停留在剛剛點的那個按鈕上,format 會悄悄沒有作用。
-      // 用 setTimeout 延到下一輪事件迴圈,並且明確呼叫 focus(),確保真的套用得上。
-      setTimeout(() => {
-        if (itineraryDayMode !== "edit") return; // 使用者可能在這一瞬間又切回預覽了,不要多此一舉
-        // 這裡是程式自己呼叫 focus(),不是使用者真的用滑鼠點擊——原本「點掉圖片選取狀態」
-        // 的機制只有滑鼠點擊才會觸發,程式自動 focus 會繞過那個機制,導致殘留的圖片選取
-        // 狀態一直沒被清掉,進而讓 Delete/Backspace 到處都被誤攔截。這裡主動清掉一次。
-        if (clearItineraryImageSelection) clearItineraryImageSelection();
-        quillItinerary.focus();
-        const len = quillItinerary.getLength();
-        quillItinerary.setSelection(len, 0);
-        quillItinerary.format("font", "iansui");
-        quillItinerary.setSelection(len, 0); // 再設一次選取範圍,強制工具列的下拉選單重新讀取、顯示正確的格式
-      }, 0);
-    }
-
     applyItineraryCardEditability(); // 用目前的預覽/編輯模式,重新套用內文中行程表格卡片是否可編輯
 
     if (!isEdit) {
@@ -3504,19 +3482,6 @@
     const toolbarEl = document.getElementById("notes-toolbar");
     if (toolbarEl) toolbarEl.style.display = isEdit ? "" : "none";
     if (quillNotes) quillNotes.enable(isEdit);
-    if (isEdit && quillNotes) {
-      // 跟行程規劃的做法一樣:每次進入編輯模式,把游標當下的格式預設成芫荽體,
-      // 只影響「接下來要打的字」,不會動到已經存在的文字,是很輕量的單一動作。
-      // 一樣要延到下一輪事件迴圈、並明確呼叫 focus(),確保編輯器真的有焦點,format 才會生效。
-      setTimeout(() => {
-        if (tripNotesMode !== "edit") return; // 使用者可能在這一瞬間又切回預覽了,不要多此一舉
-        quillNotes.focus();
-        const len = quillNotes.getLength();
-        quillNotes.setSelection(len, 0);
-        quillNotes.format("font", "iansui");
-        quillNotes.setSelection(len, 0); // 再設一次選取範圍,強制工具列的下拉選單重新讀取、顯示正確的格式
-      }, 0);
-    }
     const notesBtn = document.querySelector('#trip-sub-nav button[data-sub="notes"]');
     if (notesBtn) notesBtn.textContent = "注意事項" + (isEdit ? "(編)" : "(預)");
   }
