@@ -2958,6 +2958,11 @@
       // 都把游標當下的格式預設成芫荽體——這只是設定「接下來打字要用什麼格式」,
       // 不會去改動任何已經存在的文字,所以不管內容多寡,這都是很輕量的單一動作,
       // 不會有效能疑慮。
+      // 注意:quill.format() 如果編輯器裡根本還沒有「游標選取位置」(例如剛從預覽切
+      // 過來、使用者還沒點過任何地方),會直接沒有作用——所以要先明確設一個游標位置
+      // (內容最後面),format 才會真的生效,工具列的字型下拉選單也才會跟著顯示正確。
+      const len = quillItinerary.getLength();
+      quillItinerary.setSelection(len, 0);
       quillItinerary.format("font", "iansui");
     }
 
@@ -3483,6 +3488,9 @@
     if (isEdit && quillNotes) {
       // 跟行程規劃的做法一樣:每次進入編輯模式,把游標當下的格式預設成芫荽體,
       // 只影響「接下來要打的字」,不會動到已經存在的文字,是很輕量的單一動作。
+      // 一樣要先明確設定游標位置,quill.format() 沒有選取範圍時不會生效。
+      const len = quillNotes.getLength();
+      quillNotes.setSelection(len, 0);
       quillNotes.format("font", "iansui");
     }
     const notesBtn = document.querySelector('#trip-sub-nav button[data-sub="notes"]');
