@@ -551,6 +551,7 @@
     .itinerary-card-left-row .itinerary-card-icon { font-size: 19px; }
     .itinerary-card-left input, .itinerary-card-left select { font-size: 19px; padding: 7px 9px; }
     .itinerary-card-duration-unit { font-size: 16px !important; }
+    .itinerary-card-duration-value { width: 50px !important; font-size: 19px !important; }
     .itinerary-card-right { flex-direction: row; justify-content: flex-end; gap: 8px; }
     .itinerary-card-move-group, .itinerary-card-nav-group { flex-direction: row; }
     .itinerary-card-main { margin-top: 6px; gap: 0; }
@@ -3528,7 +3529,7 @@
     ITINERARY_CARD_CATEGORIES.forEach((cat) => {
       const opt = document.createElement("option");
       opt.value = cat;
-      opt.textContent = `${ITINERARY_CATEGORY_ICONS[cat] || ""} ${cat}`;
+      opt.textContent = cat; // 圖示已經由旁邊獨立的 categoryIcon 元素顯示,這裡不用再重複帶一次
       if (cat === (card.category || "景點")) opt.selected = true;
       categorySelect.appendChild(opt);
     });
