@@ -387,6 +387,27 @@
     background: rgba(255,255,255,0.22); padding: 6px 14px; border-radius: 20px;
     font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Iansui", "Noto Sans TC", sans-serif;
   }
+  .trip-cover-stays { margin-top: 14px; }
+  .trip-cover-stay-label { font-size: 12px; opacity: 0.85; margin-bottom: 6px; }
+  .trip-cover-stay-bar {
+    display: flex; width: 100%; height: 34px; border-radius: 8px; overflow: hidden;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.25);
+  }
+  .trip-cover-stay-seg {
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 600; color: #fff; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; padding: 0 6px;
+    font-family: "Iansui", "Noto Sans TC", sans-serif;
+    border-right: 1px solid rgba(255,255,255,0.3);
+  }
+  .trip-cover-stay-seg:last-child { border-right: none; }
+  .trip-cover-stay-ticks {
+    display: flex; margin-top: 4px; font-size: 11px; opacity: 0.75;
+  }
+  .trip-cover-stay-ticks span { flex: 1; text-align: center; }
+  .trip-cover-stay-ticks span:first-child { text-align: left; }
+  .trip-cover-stay-ticks span:last-child { text-align: right; }
+
   .trip-cover-index { display: flex; flex-direction: column; gap: 10px; }
   .trip-cover-item {
     display: flex; align-items: center; gap: 14px;
@@ -773,6 +794,7 @@
         <div class="trip-cover-title" id="cover-title"></div>
         <div class="trip-cover-sub" id="cover-sub"></div>
         <div class="trip-cover-countdown" id="cover-countdown"></div>
+        <div class="trip-cover-stays" id="cover-stays"></div>
       </div>
       <div class="trip-cover-index" id="trip-cover-index">
         <button type="button" class="trip-cover-item" data-sub="overview">
@@ -4494,6 +4516,56 @@
   // ---------- 行程詳細 ----------
   document.getElementById("back-to-trips").addEventListener("click", () => switchView("trips"));
 
+  // 依「住宿資訊」既有的資料(check_in_date / check_out_date / name),在封面畫面上
+  // 自動產生一條分段色帶,呈現整趟行程住在哪裡、住幾晚——不需要另外新增任何資料庫欄位,
+  // 只要在「住宿資訊」分頁裡照實填好每一筆入住/退房日期,這裡就會自動反映出來。
+  const TRIP_COVER_STAY_COLORS = ["#c9974a", "#4a90d9", "#a5556b", "#6d8f52", "#8a6ba3", "#c0483b"];
+  function renderTripCoverStays(accommodations, days) {
+    const container = document.getElementById("cover-stays");
+    if (!accommodations || accommodations.length === 0 || !days || days.length === 0) {
+      container.innerHTML = "";
+      return;
+    }
+    const sorted = [...accommodations]
+      .filter((a) => a.check_in_date)
+      .sort((a, b) => a.check_in_date.localeCompare(b.check_in_date));
+    if (sorted.length === 0) {
+      container.innerHTML = "";
+      return;
+    }
+
+    function nightsBetween(inDate, outDate) {
+      if (!inDate || !outDate) return 1;
+      const n = Math.round((new Date(outDate + "T00:00:00") - new Date(inDate + "T00:00:00")) / 86400000);
+      return Math.max(1, n);
+    }
+
+    const segmentsHtml = sorted.map((a, i) => {
+      const nights = nightsBetween(a.check_in_date, a.check_out_date);
+      const color = TRIP_COVER_STAY_COLORS[i % TRIP_COVER_STAY_COLORS.length];
+      return `<div class="trip-cover-stay-seg" style="flex-grow:${nights}; background:${color};" title="${escapeHtml(a.name || "住宿")}">${escapeHtml(a.name || "住宿")}</div>`;
+    }).join("");
+
+    const labelHtml = sorted.map((a) => {
+      const nights = nightsBetween(a.check_in_date, a.check_out_date);
+      return `${escapeHtml(a.name || "住宿")} ${nights}`;
+    }).join(" / ");
+
+    // 日期刻度:只挑出「每段住宿的入住那一天」跟行程最後一天,避免天數一多刻度擠成一團
+    const tickDates = new Set([days[0], days[days.length - 1]]);
+    sorted.forEach((a) => { if (days.includes(a.check_in_date)) tickDates.add(a.check_in_date); });
+    const ticksHtml = days
+      .filter((d) => tickDates.has(d))
+      .map((d) => `<span>${d.slice(5).replace("-", "/")}</span>`)
+      .join("");
+
+    container.innerHTML = `
+      <div class="trip-cover-stay-label">住宿帶 · ${labelHtml}</div>
+      <div class="trip-cover-stay-bar">${segmentsHtml}</div>
+      <div class="trip-cover-stay-ticks">${ticksHtml}</div>
+    `;
+  }
+
   // 計算距出發還有幾天(或行程進行中/已結束),用在封面畫面的倒數提示上
   function computeTripCountdownText(dateStart, dateEnd) {
     if (!dateStart) return "";
@@ -4808,6 +4880,14 @@
 
     const days = computeDateRange(t.date_start, t.date_end);
     renderDayTabs(days);
+
+    try {
+      await loadAccommodations();
+      renderTripCoverStays(currentAccommodations, days);
+    } catch (err) {
+      // 住宿資料抓取失敗時,封面上就不顯示住宿帶,不影響行程其他部分正常使用
+      document.getElementById("cover-stays").innerHTML = "";
+    }
 
     try {
       const idata = await apiFetch(`/api/trips/${tripId}/itinerary-days`);
