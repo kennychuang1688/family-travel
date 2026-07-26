@@ -1742,6 +1742,12 @@
     }
     ItineraryCardBlot.blotName = "itineraryCard";
     ItineraryCardBlot.tagName = "DIV";
+    // 加上 className:讓 Quill(不管是載入存檔內容、還是使用者貼上外部內容時)辨識「這是不是
+    // 一張行程表格卡片」,除了標籤名稱是 DIV 之外,還要同時符合這個 class 名稱才算數。
+    // 沒有這行的話,任何一個從別處貼進來、剛好也是 <div> 標籤的內容,都有機會被誤判成一張
+    // (內容是空的)卡片——加上這個限制之後,只有真正由「新增行程表格」按鈕產生的卡片,
+    // 才會符合這兩個條件,大幅降低誤判的機率。
+    ItineraryCardBlot.className = "itinerary-card-embed";
     Quill.register(ItineraryCardBlot, true);
   })();
 
