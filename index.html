@@ -3174,6 +3174,14 @@
     titleInput.dataset.field = "title";
     setCardDescriptionHTML(titleInput, (card.title || "").replace(/[\r\n]+/g, " "));
     stopPasteBubble(titleInput);
+    titleInput.addEventListener("paste", (e) => {
+      // 貼上的內容如果帶有自己的格式(例如來源網頁本身設定的字重),會產生內層元素、
+      // 帶著自己的行內樣式,蓋掉標題欄位「粗體」的 CSS 設定。這裡強制貼上時只取純文字,
+      // 不帶任何格式,讓標題欄位的粗體樣式可以正常套用。
+      e.preventDefault();
+      const text = (e.clipboardData || window.clipboardData).getData("text/plain").replace(/[\r\n]+/g, " ");
+      document.execCommand("insertText", false, text);
+    });
     titleInput.addEventListener("input", () => {
       // 行程名稱不需要多行;如果因為複製貼上等原因夾帶了換行(變成 <br>/<div>),
       // 這裡攤平成單行純文字,避免欄位莫名其妙變成好幾行(這種情況很少見,攤平時
