@@ -3258,10 +3258,19 @@
 
   // 在目前游標/選取位置插入一段純文字,取代選取範圍(如果有的話)。
   // 優先用瀏覽器內建的 insertText 指令(這樣插入的內容才會正確被記進瀏覽器自己的復原堆疊);
-  // 如果瀏覽器不支援或失敗,才退回手動操作 Range 的方式,並把文字裡的換行處理成 <br>,
+  // 如果瀏覽器不支援,才退回手動操作 Range 的方式,並把文字裡的換行處理成 <br>,
   // 確保多行內容貼上後還是看得出原本的分行。
+  //
+  // 重要:這裡是「先確認支不支援,再決定要走哪一條路」,而不是「先試著插入,插入失敗才走
+  // 備用方式」。因為 insertText 指令即使實際上已經成功把文字插進去了,回傳值在某些情況下
+  // 仍然可能是不可靠的 false——如果照回傳值判斷,會導致備用方式又把同一段文字再插一次,
+  // 變成畫面上看到文字重複兩份。改成一開始就決定好唯一要走的路徑,同一次貼上只會插入一次。
   function insertPlainTextAtCursor(text) {
-    if (document.execCommand("insertText", false, text)) return;
+    const supportsInsertText = document.queryCommandSupported && document.queryCommandSupported("insertText");
+    if (supportsInsertText) {
+      document.execCommand("insertText", false, text);
+      return;
+    }
     const sel = window.getSelection();
     if (!sel.rangeCount) return;
     const range = sel.getRangeAt(0);
