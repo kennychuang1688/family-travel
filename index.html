@@ -51,6 +51,51 @@
   #notes-toolbar .ql-font .ql-picker-item[data-value="sans"]::before {
     content: "Sans Serif" !important;
   }
+  /* 依角色權限隱藏對應的分頁按鈕跟內容面板——一般會員對費用花費/事項清單/其他文件/注意事項
+     完全沒有權限,VIP 會員對這幾個是唯讀,實際的權限把關永遠是後端 API 說了算,這裡純粹是
+     不要讓使用者看到一堆點了也會被擋下來的分頁,體驗比較好。 */
+  body.no-expenses-access #trip-sub-nav button[data-sub="expenses"],
+  body.no-expenses-access #trip-sub-expenses {
+    display: none !important;
+  }
+  body.no-checklist-access #trip-sub-nav button[data-sub="checklist"],
+  body.no-checklist-access #trip-sub-checklist {
+    display: none !important;
+  }
+  body.no-documents-access #trip-sub-nav button[data-sub="documents"],
+  body.no-documents-access #trip-sub-documents {
+    display: none !important;
+  }
+  body.no-notes-access #trip-sub-nav button[data-sub="notes"],
+  body.no-notes-access #trip-sub-notes {
+    display: none !important;
+  }
+  body.no-trips-write #toggle-new-trip,
+  body.no-trips-write #new-trip-form,
+  body.no-trips-write .trip-row-actions-write {
+    display: none !important;
+  }
+  body.no-itinerary-write #flight-form-area,
+  body.no-itinerary-write #accommodation-form-area,
+  body.no-itinerary-write .flight-card-actions {
+    display: none !important;
+  }
+  body.no-media-upload #media-file-input,
+  body.no-media-upload #sync-media-btn {
+    display: none !important;
+  }
+  body.no-media-delete #media-batch-delete-btn,
+  body.no-media-delete #lightbox-delete-btn {
+    display: none !important;
+  }
+  body.no-media-edit #media-batch-edit-toggle-btn {
+    display: none !important;
+  }
+  body.no-expenses-delete .expense-delete-btn,
+  body.no-checklist-delete .checklist-delete-btn,
+  body.no-documents-delete .document-delete-btn {
+    display: none !important;
+  }
   :root {
     --bg: #f7efe0;
     --bg-soft: #ffffff;
@@ -903,7 +948,24 @@
   <!-- 帳號管理(管理員) -->
   <div id="view-users" class="view">
     <div class="panel">
-      <h2>帳號管理(僅管理員可見)</h2>
+      <h2>權限說明</h2>
+      <table>
+        <thead><tr><th>項目</th><th>管理員</th><th>VIP 會員</th><th>一般會員</th></tr></thead>
+        <tbody>
+          <tr><td>1. 帳號管理</td><td>V</td><td>X</td><td>X</td></tr>
+          <tr><td>2. Log</td><td>V</td><td>X</td><td>X</td></tr>
+          <tr><td>3. 旅遊行程</td><td>編輯/移除/讀取</td><td>讀取</td><td>讀取</td></tr>
+          <tr><td>3.1 行程規劃</td><td>編輯/移除/讀取</td><td>讀取</td><td>讀取</td></tr>
+          <tr><td>3.2 照片/影片</td><td>上傳/下載/編輯/移除/讀取</td><td>上傳/下載/編輯/讀取</td><td>讀取</td></tr>
+          <tr><td>3.3 費用花費</td><td>新增/編輯/刪除/讀取</td><td>新增/編輯/讀取</td><td>X</td></tr>
+          <tr><td>3.4 事項清單</td><td>新增/編輯/刪除/讀取</td><td>新增/編輯/讀取</td><td>X</td></tr>
+          <tr><td>3.5 其他文件</td><td>上傳/下載/刪除/讀取</td><td>上傳/下載/讀取</td><td>X</td></tr>
+          <tr><td>3.6 注意事項</td><td>編輯/移除/讀取</td><td>讀取</td><td>X</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="panel">
+      <h2>帳號修改</h2>
       <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px; flex-wrap:wrap;">
         <button class="ghost" id="user-sync-btn">從白名單匯入原本已有的帳號</button>
         <span class="status-line" id="user-sync-status"></span>
@@ -1265,6 +1327,36 @@
 
   let idToken = null;
   let userIsAdmin = false;
+  let userRole = "member"; // "admin" | "vip" | "member",登入後由 /api/auth 回傳決定
+
+  // 跟後端 worker.js 裡的 PERMISSION_MATRIX 完全對應——這裡只用來控制「要不要顯示/啟用
+  // 某個按鈕或分頁」這種畫面呈現,真正的權限把關永遠是後端說了算;前端這份純粹是為了
+  // 不要讓使用者看到一堆點了也會被後端擋下來的按鈕,體驗比較好。
+  const PERMISSION_MATRIX = {
+    tripsWrite:      { admin: true, vip: false, member: false },
+    tripsRead:       { admin: true, vip: true,  member: true  },
+    itineraryWrite:  { admin: true, vip: false, member: false },
+    itineraryRead:   { admin: true, vip: true,  member: true  },
+    mediaUpload:     { admin: true, vip: true,  member: false },
+    mediaEdit:       { admin: true, vip: true,  member: false },
+    mediaDelete:     { admin: true, vip: false, member: false },
+    mediaRead:       { admin: true, vip: true,  member: true  },
+    expensesWrite:   { admin: true, vip: true,  member: false },
+    expensesDelete:  { admin: true, vip: false, member: false },
+    expensesRead:    { admin: true, vip: true,  member: false },
+    checklistWrite:  { admin: true, vip: true,  member: false },
+    checklistDelete: { admin: true, vip: false, member: false },
+    checklistRead:   { admin: true, vip: true,  member: false },
+    documentsUpload: { admin: true, vip: true,  member: false },
+    documentsDelete: { admin: true, vip: false, member: false },
+    documentsRead:   { admin: true, vip: true,  member: false },
+    notesWrite:      { admin: true, vip: false, member: false },
+    notesRead:       { admin: true, vip: true,  member: false },
+  };
+  function hasPermission(key) {
+    const rule = PERMISSION_MATRIX[key];
+    return !!(rule && rule[userRole]);
+  }
   let currentTripId = null;
   let quillItinerary = null;
   let itineraryDayContents = {};
@@ -2293,6 +2385,7 @@
         body: JSON.stringify({ id_token: idToken }),
       });
       userIsAdmin = !!data.isAdmin;
+      userRole = data.role || "member";
 
       document.getElementById("gate").style.display = "none";
       document.getElementById("main-nav").style.display = "flex";
@@ -2302,6 +2395,22 @@
         document.getElementById("nav-logs").style.display = "inline-block";
         document.getElementById("nav-users").style.display = "inline-block";
       }
+      // 在 <body> 上加註目前角色對應的 class,讓 CSS 統一決定哪些功能要隱藏——
+      // 比起在一堆按鈕各自的建立邏輯裡插入 if (userRole === ...) 判斷,集中在 CSS
+      // 一個地方管理,以後角色權限有調整時比較不容易漏改。
+      document.body.classList.add(`role-${userRole}`);
+      if (!hasPermission("expensesRead")) document.body.classList.add("no-expenses-access");
+      if (!hasPermission("checklistRead")) document.body.classList.add("no-checklist-access");
+      if (!hasPermission("documentsRead")) document.body.classList.add("no-documents-access");
+      if (!hasPermission("notesRead")) document.body.classList.add("no-notes-access");
+      if (!hasPermission("tripsWrite")) document.body.classList.add("no-trips-write");
+      if (!hasPermission("itineraryWrite")) document.body.classList.add("no-itinerary-write");
+      if (!hasPermission("mediaUpload")) document.body.classList.add("no-media-upload");
+      if (!hasPermission("mediaDelete")) document.body.classList.add("no-media-delete");
+      if (!hasPermission("mediaEdit")) document.body.classList.add("no-media-edit");
+      if (!hasPermission("expensesDelete")) document.body.classList.add("no-expenses-delete");
+      if (!hasPermission("checklistDelete")) document.body.classList.add("no-checklist-delete");
+      if (!hasPermission("documentsDelete")) document.body.classList.add("no-documents-delete");
 
       const payload = JSON.parse(atob(idToken.split(".")[1]));
       document.getElementById("user-avatar").src = payload.picture || "";
@@ -2515,6 +2624,7 @@
       const tdLocation = document.createElement("td");
       tdLocation.textContent = t.location;
       const tdActions = document.createElement("td");
+      tdActions.className = "trip-row-actions-write";
 
       const editBtn = document.createElement("button");
       editBtn.className = "ghost";
@@ -3291,9 +3401,12 @@
         clearTimeout(autoSaveTimer);
         saveCurrentDayContent(false);
         itineraryDayMode = "preview";
-      } else {
+      } else if (hasPermission("itineraryWrite")) {
         itineraryDayMode = "edit";
       }
+      // 沒有行程規劃編輯權限的角色(一般會員、VIP 會員),再點一次分頁按鈕也不會進入編輯模式,
+      // 永遠停留在預覽——這樣工具列、新增行程表格按鈕等等(都是依 itineraryDayMode 決定
+      // 要不要顯示)就會自然保持隱藏,不需要另外一一處理。
     }
     applyItineraryDayMode();
   }
@@ -3781,7 +3894,7 @@
         clearTimeout(tripNotesAutoSaveTimer);
         saveTripNotes();
         tripNotesMode = "preview";
-      } else {
+      } else if (hasPermission("notesWrite")) {
         tripNotesMode = "edit";
       }
       applyTripNotesMode();
@@ -4506,7 +4619,7 @@
       editBtn.textContent = "編輯";
       editBtn.addEventListener("click", () => startEditExpense(e));
       const deleteBtn = document.createElement("button");
-      deleteBtn.className = "ghost";
+      deleteBtn.className = "ghost expense-delete-btn";
       deleteBtn.textContent = "刪除";
       deleteBtn.addEventListener("click", async () => {
         if (!confirm("確定要刪除這筆費用紀錄嗎?")) return;
@@ -4716,7 +4829,7 @@
         }
       });
       const deleteBtn = document.createElement("button");
-      deleteBtn.className = "danger";
+      deleteBtn.className = "danger document-delete-btn";
       deleteBtn.textContent = "刪除";
       deleteBtn.addEventListener("click", async () => {
         if (!confirm(`確定要刪除「${d.name}」嗎?`)) return;
@@ -4803,7 +4916,7 @@
     // 各自的標題底下,每一列再重複貼一次同樣的標籤只是多餘的視覺雜訊。
 
     const deleteBtn = document.createElement("button");
-    deleteBtn.className = "danger";
+    deleteBtn.className = "danger checklist-delete-btn";
     deleteBtn.textContent = "移除";
     deleteBtn.addEventListener("click", async () => {
       try {
