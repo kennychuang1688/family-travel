@@ -2620,7 +2620,34 @@
     }
   }
 
-  document.getElementById("signout-btn").addEventListener("click", () => {
+  document.getElementById("signout-btn").addEventListener("click", async () => {
+    // 登出前,先把任何還在等待自動存檔(debounce 延遲)、還沒真的送到後端的修改強制存一次——
+    // 不然登出這個動作會直接重新整理整個頁面,把還沒存到後端的最新修改整個蓋掉、憑空消失
+    // (這正是「編輯當下有,登出後又不見」這個 bug 的真正原因)。
+    try {
+      if (itineraryDayMode === "edit") {
+        clearTimeout(autoSaveTimer);
+        await saveCurrentDayContent(true);
+      }
+      if (typeof tripNotesMode !== "undefined" && tripNotesMode === "edit") {
+        clearTimeout(tripNotesAutoSaveTimer);
+        await saveTripNotes();
+      }
+      if (typeof overviewIntroMode !== "undefined" && overviewIntroMode === "edit") {
+        clearTimeout(overviewAutoSaveTimer);
+        await saveOverview();
+      }
+      // 卡片欄位(標題/說明等)各自獨立的延遲存檔,也一併強制存一次
+      const pendingCardIds = Object.keys(itineraryCardSaveTimers);
+      await Promise.all(pendingCardIds.map((cardId) => {
+        clearTimeout(itineraryCardSaveTimers[cardId]);
+        delete itineraryCardSaveTimers[cardId];
+        return saveItineraryCard(cardId);
+      }));
+    } catch (err) {
+      // 存檔失敗也要讓使用者能正常登出,不要卡住登出流程本身
+      console.error("登出前強制存檔失敗:", err);
+    }
     idToken = null;
     google.accounts.id.disableAutoSelect();
     location.reload();
