@@ -3239,8 +3239,47 @@
   // 行程表格卡片裡的輸入欄位是包在 Quill 的內文區域裡的。Quill 本身在內文區域上
   // 綁了自己的貼上(paste)處理邏輯,如果不擋住事件往上傳遞,直接對著卡片裡的欄位貼上文字時,
   // 內容會被 Quill 攔截、貼到下面自由編輯區裡,而不是貼進使用者實際點著的那個欄位。
+  //
+  // 對於「標題/說明」這種可以自由排版文字的欄位(contenteditable),還多做一件事:
+  // 把貼上的內容強制轉成乾淨的純文字,丟掉來源網頁/文件原本夾帶的字型、顏色、大小等樣式。
+  // 不這樣做的話,貼上的文字會保留來源自己的樣式,蓋掉這裡想套用的芫荽體/顏色;而且因為
+  // 每一行可能各自夾帶不同的樣式標籤,選取整段一起改字型/顏色時,常常沒辦法一次生效,
+  // 只能一行一行改。先清成純文字之後,之後要套字型/顏色都是從同一個乾淨的起點開始,
+  // 選取整段一次套用就會正確生效。
   function stopPasteBubble(el) {
-    el.addEventListener("paste", (e) => e.stopPropagation());
+    el.addEventListener("paste", (e) => {
+      e.stopPropagation();
+      if (!el.isContentEditable) return; // 一般 input/select 貼上本來就只會是純文字,不用額外處理
+      e.preventDefault();
+      const text = (e.clipboardData || window.clipboardData).getData("text/plain");
+      insertPlainTextAtCursor(text);
+    });
+  }
+
+  // 在目前游標/選取位置插入一段純文字,取代選取範圍(如果有的話)。
+  // 優先用瀏覽器內建的 insertText 指令(這樣插入的內容才會正確被記進瀏覽器自己的復原堆疊);
+  // 如果瀏覽器不支援或失敗,才退回手動操作 Range 的方式,並把文字裡的換行處理成 <br>,
+  // 確保多行內容貼上後還是看得出原本的分行。
+  function insertPlainTextAtCursor(text) {
+    if (document.execCommand("insertText", false, text)) return;
+    const sel = window.getSelection();
+    if (!sel.rangeCount) return;
+    const range = sel.getRangeAt(0);
+    range.deleteContents();
+    const lines = text.split("\n");
+    const fragment = document.createDocumentFragment();
+    lines.forEach((line, i) => {
+      fragment.appendChild(document.createTextNode(line));
+      if (i < lines.length - 1) fragment.appendChild(document.createElement("br"));
+    });
+    const lastNode = fragment.lastChild;
+    range.insertNode(fragment);
+    if (lastNode) {
+      range.setStartAfter(lastNode);
+      range.setEndAfter(lastNode);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
   }
 
   // 卡片的標題/說明欄位是巢狀在行程內文這個大的 contenteditable 裡面的獨立可編輯小區塊。
