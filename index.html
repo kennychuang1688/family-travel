@@ -1139,6 +1139,111 @@
     },
   };
 
+  // ---------- CardStore:唯一持有「行程表格卡片」資料與狀態的地方 ----------
+  // 之前這份資料(currentItineraryCards)跟狀態(itineraryCardsStatus)是兩個各自散落
+  // 在外層的全域變數,任何程式碼都可以直接讀寫,容易在不知情的狀況下互相干擾。
+  // 收進這裡之後,外部只能透過下面這些公開方法操作,不能直接碰內部的 cards/status。
+  const CardStore = (() => {
+    let cards = [];
+    // status 只會是這四種之一:
+    // idle(還沒開始抓)/ loading(抓取中)/ loaded(成功抓到,內容可信)/ error(這次抓取失敗)。
+    // 這個狀態存在的唯一目的,是讓 CardRenderer 能分辨「這一天真的沒有卡片」
+    // 跟「這次剛好沒抓到資料」——這兩種情況「不能」都用「空陣列」表示,
+    // 不然 API 呼叫失敗時,會被誤判成「所有卡片都被刪除了」,把內文中的卡片空殼整批清空
+    // (這就是之前修過的那個 bug 的根本原因)。
+    let status = "idle";
+    // 每次呼叫 loadForDate() 就遞增一次,用來分辨「這次 API 回應,是不是已經被更新的請求取代了」——
+    // 例如使用者很快切換了兩次日期分頁,前一次還沒回應完,就不該讓它的結果蓋掉後一次的資料。
+    let requestSeq = 0;
+
+    function getAll() {
+      return cards;
+    }
+    function findById(id) {
+      return id ? cards.find((c) => c.id === id) : null;
+    }
+    function getStatus() {
+      return status;
+    }
+    function isLoaded() {
+      return status === "loaded";
+    }
+
+    // 樂觀更新(optimistic update):新增/刪除卡片時,先在畫面上反映結果,
+    // 不用等下一次 loadForDate() 重新抓一次資料庫才能看到
+    function add(card) {
+      cards.push(card);
+    }
+    function remove(id) {
+      cards = cards.filter((c) => c.id !== id);
+    }
+
+    // 切換到別天之前呼叫,清空目前資料,避免切換瞬間短暫看到上一天的舊卡片
+    function reset() {
+      cards = [];
+      status = "idle";
+      requestSeq += 1; // 順便讓任何還在飛行中的舊請求,回來時被視為過期、不生效
+    }
+
+    async function loadForDate(tripId, date) {
+      const seq = ++requestSeq;
+      status = "loading";
+      try {
+        const data = await apiFetch(`/api/trips/${tripId}/itinerary-days/${date}/cards`);
+        if (seq !== requestSeq) return false; // 這次回應已經過期(使用者切到別天去了),不採用
+        cards = data.cards || [];
+        status = "loaded";
+        return true;
+      } catch (err) {
+        if (seq !== requestSeq) return false;
+        // 抓取失敗:「不」清空、也「不」覆蓋既有的 cards,只把狀態標成 error。
+        // CardRenderer 看到 error 狀態時,知道這次的「找不到」不可信,不會誤刪任何內容。
+        console.warn("行程表格卡片載入失敗,暫時保留畫面上原本的內容:", err);
+        status = "error";
+        return false;
+      }
+    }
+
+    return { getAll, findById, getStatus, isLoaded, add, remove, reset, loadForDate };
+  })();
+
+  // ---------- CardRenderer:把畫面(Quill 內文裡的卡片空殼)對齊 CardStore 目前的資料 ----------
+  // 只負責「同步畫面」,不負責決定資料本身是什麼、也不負責發 API 請求,這些都交給 CardStore。
+  const CardRenderer = (() => {
+    function sync() {
+      if (!quillItinerary) return;
+      const root = EditorCore.getRoot();
+
+      // 注意:這裡故意「不」自動把資料庫裡找不到對應嵌入位置的卡片補插到內文最後面——
+      // 之前這個自動補插的機制在少數瀏覽器(例如手機版 Safari)上,偶爾會因為畫面還沒
+      // 完全渲染完成就先掃描一次,誤判某張卡片「不見了」,結果把它搬到最後面、順序整個亂掉。
+      // 拿掉這個自動搬移機制後,卡片的順序就只會依照使用者實際編輯、上下移動的結果為準。
+      Array.from(root.querySelectorAll(".itinerary-card-embed[data-card-id]")).forEach((node) => {
+        const id = node.getAttribute("data-card-id");
+        const card = CardStore.findById(id);
+        if (!card) {
+          // 重要:只有在「確定已經成功抓到這一天完整的卡片清單」時,才代表「找不到」
+          // 是真的表示這張卡片已經被刪除了,可以放心清掉空殼。
+          // 如果現在的狀態是 loading / error,「找不到」只代表「我們現在不知道」,
+          // 不能當成「已經刪除」處理——寧可讓這個空殼暫時維持空白,也不要冒著誤刪的風險。
+          if (!CardStore.isLoaded()) return;
+          const staleBlot = EditorCore.findBlot(node);
+          if (staleBlot) {
+            const staleIndex = EditorCore.getIndexOfBlot(staleBlot);
+            EditorCore.deleteTextAt(staleIndex, staleBlot.length(), "silent");
+          } else {
+            node.remove();
+          }
+          return;
+        }
+        if (node._hydrated) return; // 已經是活的,不要重建,避免打斷正在輸入的游標
+        populateItineraryCardNode(node, card);
+        applyCardNodeEditability(node); // 剛長出來的卡片,套用一次目前的預覽/編輯狀態就好,不用整個文件重新掃一次
+      });
+    }
+    return { sync };
+  })();
+
   function isIOSDevice() {
     const ua = navigator.userAgent || "";
     if (/iPad|iPhone|iPod/.test(ua)) return true;
@@ -1495,12 +1600,6 @@
   let itineraryDayContents = {};
   let currentItineraryDate = null;
   let currentTripTitle = "";
-  let currentItineraryCards = []; // 目前這一天的「行程表格」卡片清單
-  // 這份卡片清單目前的狀態:"idle"(還沒開始抓)/ "loading"(抓取中)/ "loaded"(成功抓到,內容可信)/ "error"(抓取失敗)。
-  // 這個狀態存在的唯一目的,是讓 hydrateItineraryCardEmbeds() 能分辨「這一天真的沒有卡片」
-  // 跟「這次剛好沒抓到資料」——之前這兩種情況都被當成「currentItineraryCards 是空陣列」,
-  // 導致 API 呼叫失敗時,會被誤判成「所有卡片都被刪除了」,把內文中的卡片空殼整批清空。
-  let itineraryCardsStatus = "idle";
   let itineraryCardSaveTimers = {};
   let suppressCardHydration = false; // 執行「移動/刪除卡片」這種一次要動好幾步 Quill 內容的操作時,暫時關閉自動補齊,避免中途觸發的 text-change 誤判成「內容不見了,自動補一份」而造成重複或殘影
 
@@ -1560,7 +1659,7 @@
 
   // ---------- 自訂 Quill 格式:行程表格卡片(嵌入在內文中的結構化行程項目) ----------
   // 這裡只註冊一個「空殼」容器(data-card-id 指向 itinerary_cards 資料表裡的一筆資料),
-  // 真正的時間/類別/名稱/說明/備註等輸入欄位,是在內容載入完成後另外用 hydrateItineraryCardEmbeds() 動態填進去的。
+  // 真正的時間/類別/名稱/說明/備註等輸入欄位,是在內容載入完成後另外用 CardRenderer.sync() 動態填進去的。
   (function registerItineraryCardBlot() {
     const BlockEmbed = Quill.import("blots/block/embed");
     class ItineraryCardBlot extends BlockEmbed {
@@ -1782,7 +1881,7 @@
         scheduleAutoSave();
         lastQuillChangeAt = Date.now();
       }
-      if (!suppressCardHydration) hydrateItineraryCardEmbeds(); // 確保任何新出現的行程表格空殼都被填上實際內容
+      if (!suppressCardHydration) CardRenderer.sync(); // 確保任何新出現的行程表格空殼都被填上實際內容
     });
 
     fixReliableEnterKey(quillItinerary);
@@ -1828,7 +1927,7 @@
   function findCardForField(fieldEl) {
     const cardNode = fieldEl.closest(".itinerary-card-embed[data-card-id]");
     const cardId = cardNode ? cardNode.getAttribute("data-card-id") : null;
-    return cardId ? currentItineraryCards.find((c) => c.id === cardId) : null;
+    return cardId ? CardStore.findById(cardId) : null;
   }
 
   // 記住「最後一次在這個欄位裡選取的文字範圍」,離開欄位(例如去點工具列的字型/連結按鈕)
@@ -3122,7 +3221,7 @@
   }
 
   function applyCardFieldValue(cardId, field, value) {
-    const card = currentItineraryCards.find((c) => c.id === cardId);
+    const card = CardStore.findById(cardId);
     if (!card) return;
     card[field] = value;
     scheduleCardSave(cardId);
@@ -3162,7 +3261,7 @@
   }
 
   async function saveItineraryCard(cardId) {
-    const card = currentItineraryCards.find((c) => c.id === cardId);
+    const card = CardStore.findById(cardId);
     if (!card) return;
     try {
       await apiFetch(`/api/itinerary-cards/${cardId}`, {
@@ -3200,7 +3299,7 @@
     EditorCore.setSelectionAt(insertAt + 1, 0, "silent");
     suppressCardHydration = false;
 
-    hydrateItineraryCardEmbeds(); // 手動再跑一次,確保新插入的空殼被正確填上內容
+    CardRenderer.sync(); // 手動再跑一次,確保新插入的空殼被正確填上內容
     scheduleAutoSave();
   }
 
@@ -3455,7 +3554,7 @@
       if (!confirm("確定要刪除這個行程項目嗎?")) return;
       try {
         await apiFetch(`/api/itinerary-cards/${card.id}`, { method: "DELETE" });
-        currentItineraryCards = currentItineraryCards.filter((c) => c.id !== card.id);
+        CardStore.remove(card.id);
         suppressCardHydration = true;
         const blot = EditorCore.findBlot(node);
         if (blot) {
@@ -3465,7 +3564,7 @@
           node.remove();
         }
         suppressCardHydration = false;
-        hydrateItineraryCardEmbeds();
+        CardRenderer.sync();
         scheduleAutoSave();
       } catch (err) {
         alert("刪除失敗:" + err.message);
@@ -3531,42 +3630,6 @@
     scheduleAutoSave(); // 把改寫後的網址存回去,以後就不用每次載入都重新改寫一次
   }
 
-  function hydrateItineraryCardEmbeds() {
-    if (!quillItinerary) return;
-    const root = EditorCore.getRoot();
-
-    // 把目前內文中已經有空殼的卡片填上內容;如果空殼對應的卡片已經不存在了(例如
-    // 剛好在別的操作過程中被刪除),順便把這個殘留的空殼清掉,避免留下看不出內容的白色空框。
-    //
-    // 注意:這裡故意「不」自動把資料庫裡找不到對應嵌入位置的卡片補插到內文最後面——
-    // 之前這個自動補插的機制在少數瀏覽器(例如手機版 Safari)上,偶爾會因為畫面還沒
-    // 完全渲染完成就先掃描一次,誤判某張卡片「不見了」,結果把它搬到最後面、順序整個亂掉。
-    // 拿掉這個自動搬移機制後,卡片的順序就只會依照使用者實際編輯、上下移動的結果為準。
-    Array.from(root.querySelectorAll(".itinerary-card-embed[data-card-id]")).forEach((node) => {
-      const id = node.getAttribute("data-card-id");
-      const card = currentItineraryCards.find((c) => c.id === id);
-      if (!card) {
-        // 重要:只有在「確定已經成功抓到這一天完整的卡片清單」時,才代表「找不到」
-        // 是真的表示這張卡片已經被刪除了,可以放心清掉空殼。
-        // 如果現在的狀態是 loading / error(還沒抓到、或這次抓取失敗),
-        // 「找不到」只代表「我們現在不知道」,不能當成「已經刪除」處理——
-        // 寧可讓這個空殼暫時維持空白,也不要冒著誤刪使用者資料的風險。
-        if (itineraryCardsStatus !== "loaded") return;
-        const staleBlot = EditorCore.findBlot(node);
-        if (staleBlot) {
-          const staleIndex = EditorCore.getIndexOfBlot(staleBlot);
-          EditorCore.deleteTextAt(staleIndex, staleBlot.length(), "silent");
-        } else {
-          node.remove();
-        }
-        return;
-      }
-      if (node._hydrated) return; // 已經是活的,不要重建,避免打斷正在輸入的游標
-      populateItineraryCardNode(node, card);
-      applyCardNodeEditability(node); // 剛長出來的卡片,套用一次目前的預覽/編輯狀態就好,不用整個文件重新掃一次
-    });
-  }
-
   // 依目前的預覽/編輯模式,套用到「單一一張」卡片節點——只在這張卡片剛被 hydrate 出來時呼叫一次。
   function applyCardNodeEditability(node) {
     const isEdit = itineraryDayMode === "edit";
@@ -3590,26 +3653,12 @@
       .forEach((el) => { el.style.display = isEdit ? "" : "none"; });
   }
 
+  // 載入某一天的卡片資料,並在成功時把畫面同步好。
+  // 實際的資料狀態管理交給 CardStore,畫面同步交給 CardRenderer,這裡只負責串起兩者。
   async function loadItineraryCards(date) {
     if (!currentTripId || !date) return;
-    itineraryCardsStatus = "loading";
-    try {
-      const data = await apiFetch(`/api/trips/${currentTripId}/itinerary-days/${date}/cards`);
-      // 抓取當下,使用者可能已經切到別的日期分頁,這種情況下這次抓回來的資料
-      // 已經是別天的了,不要拿來更新畫面,也不要動到目前這天真正的狀態
-      if (currentItineraryDate !== date) return;
-      currentItineraryCards = data.cards || [];
-      itineraryCardsStatus = "loaded";
-    } catch (err) {
-      if (currentItineraryDate !== date) return;
-      // 抓取失敗:不清空、也不覆蓋既有的 currentItineraryCards,只標成 error。
-      // 這樣 hydrateItineraryCardEmbeds() 就知道「這次資料不可信」,不會誤判成
-      // 「所有卡片都被刪除了」而把內文裡的卡片空殼整批清掉。
-      console.warn("行程表格卡片載入失敗,暫時保留畫面上原本的內容:", err);
-      itineraryCardsStatus = "error";
-      return; // 資料不可信,這次不執行 hydrate,維持畫面現狀
-    }
-    hydrateItineraryCardEmbeds();
+    const ok = await CardStore.loadForDate(currentTripId, date);
+    if (ok) CardRenderer.sync();
   }
 
   async function handleAddItineraryCard() {
@@ -3621,7 +3670,7 @@
         body: JSON.stringify({ time: "", category: "景點", title: "", description: "", notes: "", durationValue: "", durationUnit: "hr", mapLink: "" }),
       });
       const newCard = { id: res.id, time: "", category: "景點", title: "", description: "", notes: "", duration_value: "", duration_unit: "hr", map_link: "", time_font: null };
-      currentItineraryCards.push(newCard);
+      CardStore.add(newCard);
       const range = EditorCore.getSelectionOrEnd();
       EditorCore.insertEmbedAt(range.index, "itineraryCard", { id: newCard.id }, "user");
       // 確保卡片後面一定有一行可以點擊、打字的空白行,不然卡片跟卡片(或跟下一段內容)
@@ -3631,7 +3680,7 @@
         EditorCore.insertTextAt(afterIndex, "\n", "user");
       }
       EditorCore.setSelectionAt(afterIndex, 0, "silent");
-      hydrateItineraryCardEmbeds();
+      CardRenderer.sync();
       scheduleAutoSave();
     } catch (err) {
       alert("新增行程表格失敗:" + err.message);
@@ -3737,7 +3786,7 @@
       }
       document.getElementById("itinerary-status").textContent = "已儲存";
       itineraryDayMode = "preview"; // 切到不同的一天,一律先進入預覽模式
-      currentItineraryCards = []; // 先清空,避免切換瞬間短暫顯示上一天的舊卡片
+      CardStore.reset(); // 先清空,避免切換瞬間短暫顯示上一天的舊卡片
       loadItineraryCards(date); // 載入這一天的行程表格卡片
     } else {
       // 已經在看這一天,再點一次同一個分頁,只是切換預覽/編輯模式:
