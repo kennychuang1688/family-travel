@@ -1092,6 +1092,15 @@
   const WORKER_URL = "https://family-drive-site.kennychuang.workers.dev";
   // =====================
 
+  // 偵測是否為 iOS 裝置(iPhone / iPad / iPod)。iPadOS 從 13 開始,Safari 的 userAgent
+  // 會偽裝成桌機版 Mac,單看 userAgent 認不出來,所以額外用「navigator.platform 回報是
+  // Mac,但同時支援多點觸控」這個特徵來判斷是不是其實是 iPad。
+  function isIOSDevice() {
+    const ua = navigator.userAgent || "";
+    if (/iPad|iPhone|iPod/.test(ua)) return true;
+    return navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+  }
+
   // ---------- 照片/影片預覽(Lightbox) ----------
   let lightboxItems = [];
   let lightboxIndex = 0;
@@ -1236,17 +1245,41 @@
       // 順手在背景預先載入上一張/下一張,使用者滑過去時大多已經準備好了
       preloadLightboxNeighbors();
     } else if (m.drive_file_id && (m.mime_type || "").startsWith("video")) {
-      // 影片:改用 Google Drive 自己的內嵌預覽 iframe。
-      // 這裡原本試過改用瀏覽器原生的 <video> 播放器,直接串流檔案原始內容,
-      // 是為了解決 iOS Safari 上「畫面中間跟下面各有一套控制列」疊在一起的問題;
-      // 但後來發現 Google 的內嵌播放器其實有做「伺服器端轉檔/串流」,才能讓 .MOV 這種
-      // iPhone 拍攝的格式在各種瀏覽器上都正常顯示畫面——我們自己代理原始檔案位元組,
-      // 沒辦法做到一樣的轉檔,導致 Chrome 等瀏覽器只有聲音、沒有畫面。
-      // 兩害相權取其輕:「影片看得到畫面」比「iOS 控制列比較乾淨」重要,所以先改回來。
-      const iframe = document.createElement("iframe");
-      iframe.src = `https://drive.google.com/file/d/${m.drive_file_id}/preview`;
-      iframe.allow = "autoplay";
-      body.appendChild(iframe);
+      // 影片:iOS 裝置改用瀏覽器原生的 <video> 播放器,直接串流我們自己 Worker 代理的檔案內容
+      // (走 /api/media/:id/stream 這支端點)。iOS 上不管是 Safari 還是 iOS 版 Chrome,
+      // 系統都強制使用 Apple 自己的解碼引擎,對 iPhone 拍攝的 .MOV 格式原生支援沒問題,
+      // 所以不會遇到「只有聲音沒畫面」的狀況——用原生 <video> 就只會有瀏覽器自己那一套
+      // 控制列,不會再跟 Google 內嵌播放器的控制列疊在一起。
+      //
+      // 其他裝置(Android、電腦瀏覽器)維持原本的 Google Drive 內嵌預覽 iframe:這是因為
+      // Google 的內嵌播放器有做「伺服器端轉檔/串流」,才能讓 .MOV 這種格式在 Chrome 等
+      // 瀏覽器上正常顯示畫面——我們自己代理原始檔案位元組,沒辦法做到一樣的轉檔,
+      // 這些裝置改用原生 <video> 會變成只有聲音、沒有畫面,所以這些裝置不能套用上面的做法。
+      if (isIOSDevice()) {
+        const video = document.createElement("video");
+        video.controls = true;
+        video.setAttribute("playsinline", ""); // 避免自動進入全螢幕,行為跟原本的內嵌預覽一致
+        video.setAttribute("webkit-playsinline", ""); // 舊版 iOS 相容寫法
+        video.style.width = "100%";
+        video.style.height = "100%";
+        video.style.background = "#000";
+        video.src = `${WORKER_URL}/api/media/${m.id}/stream`;
+        video.onerror = () => {
+          // 萬一原生播放失敗(例如格式真的不支援),退回 Google 內嵌預覽,確保至少看得到
+          if (lightboxItems[lightboxIndex] !== m) return;
+          body.innerHTML = "";
+          const fallbackIframe = document.createElement("iframe");
+          fallbackIframe.src = `https://drive.google.com/file/d/${m.drive_file_id}/preview`;
+          fallbackIframe.allow = "autoplay";
+          body.appendChild(fallbackIframe);
+        };
+        body.appendChild(video);
+      } else {
+        const iframe = document.createElement("iframe");
+        iframe.src = `https://drive.google.com/file/d/${m.drive_file_id}/preview`;
+        iframe.allow = "autoplay";
+        body.appendChild(iframe);
+      }
     } else if (m.drive_file_id) {
       const iframe = document.createElement("iframe");
       iframe.src = `https://drive.google.com/file/d/${m.drive_file_id}/preview`;
