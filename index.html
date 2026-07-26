@@ -361,6 +361,7 @@
      只有在螢幕寬度 700px 以下(手機瀏覽模式)才會有「封面/頁籤內容」二選一的切換行為。
      用 #view-trip-detail 上的 showing-cover class 切換,不用另外調整既有的 DOM 結構,降低改動風險。 */
   .trip-cover { display: none; }
+  #back-to-cover { display: none; } /* 電腦版預設隱藏,只有手機版斷點裡才會顯示出來 */
   @media (max-width: 700px) {
     #view-trip-detail.showing-cover .trip-cover { display: block; }
     #view-trip-detail.showing-cover #trip-sub-nav,
