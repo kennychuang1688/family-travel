@@ -1244,6 +1244,42 @@
     return { sync };
   })();
 
+  // ---------- Green:工具列模組對外提供的「能力查詢」介面 ----------
+  // 這裡集中宣告「目前這個版本的工具列,實際支援哪些功能」。任何其他模組(目前是行程卡片功能)
+  // 如果想借用工具列的某個能力,應該先呼叫 Green.supports(...) 問一句,而不是自己去猜、
+  // 自己去翻工具列的 DOM 結構、CSS class 名稱。
+  //
+  // 這樣做的好處:以後如果 Green 的工具列改版(拿掉某個按鈕、換了 class 名稱、甚至換成完全不同
+  // 的 UI 元件),只要這裡的 capabilities 設定跟著更新,所有借用這個能力的地方會自動變成
+  // 「優雅地不做任何事」,不會因為找不到預期的 DOM 元素而報錯或整個功能掛掉。
+  const Green = (() => {
+    const capabilities = {
+      fontSwitch: true, // 工具列上的「font」下拉選單(芫荽體 / Sans Serif 切換)
+      colorSwitch: true, // 工具列上的「文字顏色 / 背景顏色」下拉選單
+    };
+
+    function supports(featureName) {
+      return !!capabilities[featureName];
+    }
+
+    // 取得某個 Quill 實體工具列上的字型下拉選單。呼叫端不需要知道這是用 CSS class 找到的、
+    // 也不需要知道找不到的時候該怎麼辦——這裡統一處理:不支援或找不到,都回傳 null。
+    function getFontPickerElement(quill) {
+      if (!supports("fontSwitch")) return null;
+      const toolbarEl = quill.getModule("toolbar").container;
+      return toolbarEl.querySelector("select.ql-font");
+    }
+
+    // 取得文字顏色/背景顏色下拉選單,kind 只能是 "color" 或 "background"。
+    function getColorPickerElement(quill, kind) {
+      if (!supports("colorSwitch")) return null;
+      const toolbarEl = quill.getModule("toolbar").container;
+      return toolbarEl.querySelector(`select.ql-${kind}`);
+    }
+
+    return { supports, getFontPickerElement, getColorPickerElement };
+  })();
+
   function isIOSDevice() {
     const ua = navigator.userAgent || "";
     if (/iPad|iPhone|iPod/.test(ua)) return true;
@@ -2016,9 +2052,11 @@
   // 用隱藏的 <select class="ql-color">/<select class="ql-background"> 驅動的。時間欄位
   // 不支援顏色(沒有逐字選取的概念,整欄位上色意義不大),只處理標題/說明這種文字選取範圍。
   function interceptCardFieldColorPicker(quill) {
-    const toolbarEl = quill.getModule("toolbar").container;
+    // 同樣先問 Green 支不支援這個功能,不支援就整個跳過。
+    if (!Green.supports("colorSwitch")) return;
+
     ["color", "background"].forEach((kind) => {
-      const select = toolbarEl.querySelector(`select.ql-${kind}`);
+      const select = Green.getColorPickerElement(quill, kind);
       if (!select) return;
 
       select.addEventListener("change", (e) => {
@@ -2060,6 +2098,11 @@
   }
 
   function interceptCardFieldFontPicker(quill) {
+    // 卡片欄位的字型切換,借用的是 Green(工具列模組)的字型下拉選單這個功能。
+    // 先問一句「這個功能現在有沒有支援」,不支援就整個跳過——卡片欄位本身還是能正常打字、
+    // 存檔,只是沒辦法切換字型而已,不會因為找不到預期的工具列元素而報錯。
+    if (!Green.supports("fontSwitch")) return;
+
     // 只要目前實際的選取範圍不是落在任何卡片欄位裡面,就清掉可能殘留的舊卡片欄位紀錄——
     // 不然選過一次卡片欄位之後,那個紀錄會一直卡著,之後不管在哪裡選字、套字型,
     // 都會被誤導套用到「上一次用過的卡片欄位」上,而不是這次真正選取的地方。
@@ -2073,8 +2116,7 @@
       }
     });
 
-    const toolbarEl = quill.getModule("toolbar").container;
-    const select = toolbarEl.querySelector("select.ql-font");
+    const select = Green.getFontPickerElement(quill);
     if (!select) return;
 
     select.addEventListener("change", (e) => {
