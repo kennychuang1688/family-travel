@@ -1456,6 +1456,11 @@
   let currentItineraryDate = null;
   let currentTripTitle = "";
   let currentItineraryCards = []; // 目前這一天的「行程表格」卡片清單
+  // 這份卡片清單目前的狀態:"idle"(還沒開始抓)/ "loading"(抓取中)/ "loaded"(成功抓到,內容可信)/ "error"(抓取失敗)。
+  // 這個狀態存在的唯一目的,是讓 hydrateItineraryCardEmbeds() 能分辨「這一天真的沒有卡片」
+  // 跟「這次剛好沒抓到資料」——之前這兩種情況都被當成「currentItineraryCards 是空陣列」,
+  // 導致 API 呼叫失敗時,會被誤判成「所有卡片都被刪除了」,把內文中的卡片空殼整批清空。
+  let itineraryCardsStatus = "idle";
   let itineraryCardSaveTimers = {};
   let suppressCardHydration = false; // 執行「移動/刪除卡片」這種一次要動好幾步 Quill 內容的操作時,暫時關閉自動補齊,避免中途觸發的 text-change 誤判成「內容不見了,自動補一份」而造成重複或殘影
 
@@ -3501,6 +3506,12 @@
       const id = node.getAttribute("data-card-id");
       const card = currentItineraryCards.find((c) => c.id === id);
       if (!card) {
+        // 重要:只有在「確定已經成功抓到這一天完整的卡片清單」時,才代表「找不到」
+        // 是真的表示這張卡片已經被刪除了,可以放心清掉空殼。
+        // 如果現在的狀態是 loading / error(還沒抓到、或這次抓取失敗),
+        // 「找不到」只代表「我們現在不知道」,不能當成「已經刪除」處理——
+        // 寧可讓這個空殼暫時維持空白,也不要冒著誤刪使用者資料的風險。
+        if (itineraryCardsStatus !== "loaded") return;
         const staleBlot = Quill.find(node);
         if (staleBlot) {
           const staleIndex = quillItinerary.getIndex(staleBlot);
@@ -3541,11 +3552,22 @@
 
   async function loadItineraryCards(date) {
     if (!currentTripId || !date) return;
+    itineraryCardsStatus = "loading";
     try {
       const data = await apiFetch(`/api/trips/${currentTripId}/itinerary-days/${date}/cards`);
+      // 抓取當下,使用者可能已經切到別的日期分頁,這種情況下這次抓回來的資料
+      // 已經是別天的了,不要拿來更新畫面,也不要動到目前這天真正的狀態
+      if (currentItineraryDate !== date) return;
       currentItineraryCards = data.cards || [];
+      itineraryCardsStatus = "loaded";
     } catch (err) {
-      currentItineraryCards = [];
+      if (currentItineraryDate !== date) return;
+      // 抓取失敗:不清空、也不覆蓋既有的 currentItineraryCards,只標成 error。
+      // 這樣 hydrateItineraryCardEmbeds() 就知道「這次資料不可信」,不會誤判成
+      // 「所有卡片都被刪除了」而把內文裡的卡片空殼整批清掉。
+      console.warn("行程表格卡片載入失敗,暫時保留畫面上原本的內容:", err);
+      itineraryCardsStatus = "error";
+      return; // 資料不可信,這次不執行 hydrate,維持畫面現狀
     }
     hydrateItineraryCardEmbeds();
   }
