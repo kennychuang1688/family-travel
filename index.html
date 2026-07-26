@@ -91,6 +91,14 @@
   body.no-media-edit #media-batch-edit-toggle-btn {
     display: none !important;
   }
+  body.no-media-download #media-batch-download-btn,
+  body.no-media-download #lightbox-download-btn {
+    display: none !important;
+  }
+  body.no-expenses-write #expense-form-area,
+  body.no-expenses-write .expense-edit-btn {
+    display: none !important;
+  }
   body.no-expenses-delete .expense-delete-btn,
   body.no-checklist-delete .checklist-delete-btn,
   body.no-documents-delete .document-delete-btn {
@@ -819,6 +827,7 @@
     <div id="trip-sub-expenses" class="trip-subview">
       <div class="panel">
         <h2>費用花費</h2>
+        <div id="expense-form-area">
         <div class="form-grid">
           <label class="field">日期<input type="date" id="expense-date" /></label>
           <label class="field">類別
@@ -849,6 +858,7 @@
         </div>
         <button class="primary" id="add-expense-btn">新增費用</button>
         <button class="ghost" id="expense-cancel-edit-btn" style="display:none;">取消編輯</button>
+        </div>
         <table style="margin-top:16px;">
           <thead><tr><th>消費日期</th><th>類別</th><th>說明</th><th>金額</th><th>約合台幣</th><th>費用狀態</th><th style="text-align:right;"></th></tr></thead>
           <tbody id="expenses-tbody"></tbody>
@@ -957,10 +967,10 @@
           <tr><td>3. 旅遊行程</td><td>編輯/移除/讀取</td><td>讀取</td><td>讀取</td></tr>
           <tr><td>3.1 行程規劃</td><td>編輯/移除/讀取</td><td>讀取</td><td>讀取</td></tr>
           <tr><td>3.2 照片/影片</td><td>上傳/下載/編輯/移除/讀取</td><td>上傳/下載/編輯/讀取</td><td>讀取</td></tr>
-          <tr><td>3.3 費用花費</td><td>新增/編輯/刪除/讀取</td><td>新增/編輯/讀取</td><td>X</td></tr>
-          <tr><td>3.4 事項清單</td><td>新增/編輯/刪除/讀取</td><td>新增/編輯/讀取</td><td>X</td></tr>
+          <tr><td>3.3 費用花費</td><td>新增/編輯/刪除/讀取</td><td>新增/編輯/讀取</td><td>讀取</td></tr>
+          <tr><td>3.4 事項清單</td><td>新增/編輯/刪除/讀取</td><td>新增/編輯/移除/讀取</td><td>X</td></tr>
           <tr><td>3.5 其他文件</td><td>上傳/下載/刪除/讀取</td><td>上傳/下載/讀取</td><td>X</td></tr>
-          <tr><td>3.6 注意事項</td><td>編輯/移除/讀取</td><td>讀取</td><td>X</td></tr>
+          <tr><td>3.6 注意事項</td><td>編輯/移除/讀取</td><td>讀取</td><td>讀取</td></tr>
         </tbody>
       </table>
     </div>
@@ -1221,9 +1231,10 @@
       body.appendChild(link);
     }
 
-    // 說明文字:顯示目前已加的文字,也可以直接在這裡編輯
+    // 說明文字:顯示目前已加的文字,也可以直接在這裡編輯(沒有編輯權限的角色只能看,不能改)
     const captionInput = document.getElementById("lightbox-caption-input");
     captionInput.value = m.caption || "";
+    captionInput.disabled = !hasPermission("mediaEdit");
     captionInput.dataset.originalValue = m.caption || "";
     captionInput.onchange = async () => {
       try {
@@ -1341,17 +1352,18 @@
     mediaEdit:       { admin: true, vip: true,  member: false },
     mediaDelete:     { admin: true, vip: false, member: false },
     mediaRead:       { admin: true, vip: true,  member: true  },
+    mediaDownload:   { admin: true, vip: true,  member: false },
     expensesWrite:   { admin: true, vip: true,  member: false },
     expensesDelete:  { admin: true, vip: false, member: false },
-    expensesRead:    { admin: true, vip: true,  member: false },
+    expensesRead:    { admin: true, vip: true,  member: true  },
     checklistWrite:  { admin: true, vip: true,  member: false },
-    checklistDelete: { admin: true, vip: false, member: false },
+    checklistDelete: { admin: true, vip: true,  member: false },
     checklistRead:   { admin: true, vip: true,  member: false },
     documentsUpload: { admin: true, vip: true,  member: false },
     documentsDelete: { admin: true, vip: false, member: false },
     documentsRead:   { admin: true, vip: true,  member: false },
     notesWrite:      { admin: true, vip: false, member: false },
-    notesRead:       { admin: true, vip: true,  member: false },
+    notesRead:       { admin: true, vip: true,  member: true  },
   };
   function hasPermission(key) {
     const rule = PERMISSION_MATRIX[key];
@@ -2408,7 +2420,9 @@
       if (!hasPermission("mediaUpload")) document.body.classList.add("no-media-upload");
       if (!hasPermission("mediaDelete")) document.body.classList.add("no-media-delete");
       if (!hasPermission("mediaEdit")) document.body.classList.add("no-media-edit");
+      if (!hasPermission("mediaDownload")) document.body.classList.add("no-media-download");
       if (!hasPermission("expensesDelete")) document.body.classList.add("no-expenses-delete");
+      if (!hasPermission("expensesWrite")) document.body.classList.add("no-expenses-write");
       if (!hasPermission("checklistDelete")) document.body.classList.add("no-checklist-delete");
       if (!hasPermission("documentsDelete")) document.body.classList.add("no-documents-delete");
 
@@ -3623,8 +3637,13 @@
     currentItineraryDate = null; // 離開日期分頁,重置記錄,之後點回任何一天都會重新從預覽模式開始
 
     if (wasActive) {
-      // 已經在航班資訊畫面時再按一次,切換預覽/編輯模式
-      flightPanelMode = flightPanelMode === "edit" ? "preview" : "edit";
+      // 已經在航班資訊畫面時再按一次,切換預覽/編輯模式(沒有行程規劃編輯權限的角色,
+      // 永遠停留在預覽,跟行程規劃/注意事項用同一套邏輯)
+      if (flightPanelMode === "edit") {
+        flightPanelMode = "preview";
+      } else if (hasPermission("itineraryWrite")) {
+        flightPanelMode = "edit";
+      }
     } else {
       // 從其他分頁切過來,一律先進入預覽模式
       flightPanelMode = "preview";
@@ -3797,8 +3816,13 @@
     currentItineraryDate = null; // 離開日期分頁,重置記錄,之後點回任何一天都會重新從預覽模式開始
 
     if (wasActive) {
-      // 已經在住宿資訊畫面時再按一次,切換預覽/編輯模式
-      accommodationPanelMode = accommodationPanelMode === "edit" ? "preview" : "edit";
+      // 已經在住宿資訊畫面時再按一次,切換預覽/編輯模式(沒有行程規劃編輯權限的角色,
+      // 永遠停留在預覽)
+      if (accommodationPanelMode === "edit") {
+        accommodationPanelMode = "preview";
+      } else if (hasPermission("itineraryWrite")) {
+        accommodationPanelMode = "edit";
+      }
     } else {
       // 從其他分頁切過來,一律先進入預覽模式
       accommodationPanelMode = "preview";
@@ -4615,7 +4639,7 @@
       const tr = document.createElement("tr");
       tr.innerHTML = `<td>${e.date || ""}</td><td>${e.category || ""}</td><td>${e.description || ""}</td><td>${e.amount} ${e.currency}</td><td>${twdText}</td><td>${e.payment_status || "尚未付款"}</td><td style="text-align:right; white-space:nowrap;"></td>`;
       const editBtn = document.createElement("button");
-      editBtn.className = "ghost";
+      editBtn.className = "ghost expense-edit-btn";
       editBtn.textContent = "編輯";
       editBtn.addEventListener("click", () => startEditExpense(e));
       const deleteBtn = document.createElement("button");
