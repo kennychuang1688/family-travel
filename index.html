@@ -26,29 +26,35 @@
     font-style: normal;
     font-display: swap;
   }
-  #itinerary-editor .ql-editor .ql-font-iansui, #notes-editor .ql-editor .ql-font-iansui { font-family: "Iansui", "Noto Sans TC", sans-serif; }
-  #itinerary-editor .ql-editor .ql-font-sans, #notes-editor .ql-editor .ql-font-sans { font-family: "Noto Sans TC", Arial, sans-serif; }
+  #itinerary-editor .ql-editor .ql-font-iansui, #notes-editor .ql-editor .ql-font-iansui, #overview-editor .ql-editor .ql-font-iansui { font-family: "Iansui", "Noto Sans TC", sans-serif; }
+  #itinerary-editor .ql-editor .ql-font-sans, #notes-editor .ql-editor .ql-font-sans, #overview-editor .ql-editor .ql-font-sans { font-family: "Noto Sans TC", Arial, sans-serif; }
   /* 選單預設(還沒有明確選過任何字型)的狀態,也顯示「芫荽體」,跟畫面上實際的視覺預設一致。
      下面 [data-value="sans"] 那組規則因為多了屬性選擇器,優先權比這條高,所以明確選過
      Sans Serif 的地方還是會正確顯示「Sans Serif」,不會被這條蓋掉。 */
   #itinerary-toolbar .ql-font .ql-picker-label::before,
   #itinerary-toolbar .ql-font .ql-picker-item::before,
   #notes-toolbar .ql-font .ql-picker-label::before,
-  #notes-toolbar .ql-font .ql-picker-item::before {
+  #notes-toolbar .ql-font .ql-picker-item::before,
+  #overview-toolbar .ql-font .ql-picker-label::before,
+  #overview-toolbar .ql-font .ql-picker-item::before {
     content: "芫荽體" !important;
     font-family: "Iansui", "Noto Sans TC", sans-serif !important;
   }
   #itinerary-toolbar .ql-font .ql-picker-label[data-value="iansui"]::before,
   #itinerary-toolbar .ql-font .ql-picker-item[data-value="iansui"]::before,
   #notes-toolbar .ql-font .ql-picker-label[data-value="iansui"]::before,
-  #notes-toolbar .ql-font .ql-picker-item[data-value="iansui"]::before {
+  #notes-toolbar .ql-font .ql-picker-item[data-value="iansui"]::before,
+  #overview-toolbar .ql-font .ql-picker-label[data-value="iansui"]::before,
+  #overview-toolbar .ql-font .ql-picker-item[data-value="iansui"]::before {
     content: "芫荽體" !important;
     font-family: "Iansui", "Noto Sans TC", sans-serif !important;
   }
   #itinerary-toolbar .ql-font .ql-picker-label[data-value="sans"]::before,
   #itinerary-toolbar .ql-font .ql-picker-item[data-value="sans"]::before,
   #notes-toolbar .ql-font .ql-picker-label[data-value="sans"]::before,
-  #notes-toolbar .ql-font .ql-picker-item[data-value="sans"]::before {
+  #notes-toolbar .ql-font .ql-picker-item[data-value="sans"]::before,
+  #overview-toolbar .ql-font .ql-picker-label[data-value="sans"]::before,
+  #overview-toolbar .ql-font .ql-picker-item[data-value="sans"]::before {
     content: "Sans Serif" !important;
   }
   /* 依角色權限隱藏對應的分頁按鈕跟內容面板——一般會員對費用花費/事項清單/其他文件/注意事項
@@ -66,8 +72,8 @@
   body.no-documents-access #trip-sub-documents {
     display: none !important;
   }
-  body.no-notes-access #trip-sub-nav button[data-sub="notes"],
-  body.no-notes-access #trip-sub-notes {
+  body.no-notes-access #overview-inner-nav button[data-overview-sub="notes"],
+  body.no-notes-access #overview-inner-notes {
     display: none !important;
   }
   body.no-trips-write #toggle-new-trip,
@@ -367,22 +373,23 @@
   #itinerary-toolbar .ql-picker-label.ql-active,
   #itinerary-toolbar .ql-picker-item.ql-selected { color: var(--gold); }
 
-  #notes-toolbar.ql-toolbar.ql-snow {
+  #notes-toolbar.ql-toolbar.ql-snow,
+  #overview-toolbar.ql-toolbar.ql-snow {
     background: var(--bg-softer);
     border-color: var(--line);
     border-radius: 8px 8px 0 0;
   }
-  #notes-toolbar .ql-stroke { stroke: var(--paper); }
-  #notes-toolbar .ql-fill { fill: var(--paper); }
-  #notes-toolbar .ql-picker-label { color: var(--paper); }
-  #notes-toolbar .ql-picker-options { background: var(--bg-softer); }
-  #notes-toolbar button:hover .ql-stroke,
-  #notes-toolbar button.ql-active .ql-stroke { stroke: var(--gold); }
-  #notes-toolbar button:hover .ql-fill,
-  #notes-toolbar button.ql-active .ql-fill { fill: var(--gold); }
-  #notes-toolbar .ql-picker-label.ql-active,
-  #notes-toolbar .ql-picker-item.ql-selected { color: var(--gold); }
-  #notes-editor .ql-editor { min-height: 320px; font-family: "Iansui", "Noto Sans TC", sans-serif; }
+  #notes-toolbar .ql-stroke, #overview-toolbar .ql-stroke { stroke: var(--paper); }
+  #notes-toolbar .ql-fill, #overview-toolbar .ql-fill { fill: var(--paper); }
+  #notes-toolbar .ql-picker-label, #overview-toolbar .ql-picker-label { color: var(--paper); }
+  #notes-toolbar .ql-picker-options, #overview-toolbar .ql-picker-options { background: var(--bg-softer); }
+  #notes-toolbar button:hover .ql-stroke, #overview-toolbar button:hover .ql-stroke,
+  #notes-toolbar button.ql-active .ql-stroke, #overview-toolbar button.ql-active .ql-stroke { stroke: var(--gold); }
+  #notes-toolbar button:hover .ql-fill, #overview-toolbar button:hover .ql-fill,
+  #notes-toolbar button.ql-active .ql-fill, #overview-toolbar button.ql-active .ql-fill { fill: var(--gold); }
+  #notes-toolbar .ql-picker-label.ql-active, #overview-toolbar .ql-picker-label.ql-active,
+  #notes-toolbar .ql-picker-item.ql-selected, #overview-toolbar .ql-picker-item.ql-selected { color: var(--gold); }
+  #notes-editor .ql-editor, #overview-editor .ql-editor { min-height: 320px; font-family: "Iansui", "Noto Sans TC", sans-serif; }
 
   /* 清單已在最外層時,「減少縮排」會套用這個 class,讓「這一行」單獨完全靠齊編輯區左邊緣,
      不會影響同一個 <ul>/<ol> 容器裡沒有套用的其他兄弟項目 */
@@ -568,10 +575,10 @@
     font-family: "Iansui", "Noto Sans TC", sans-serif;
   }
   #itinerary-editor .ql-editor.ql-blank::before { color: rgba(59,42,33,0.35); font-style: normal; }
-  #itinerary-editor .ql-editor img, #notes-editor .ql-editor img {
+  #itinerary-editor .ql-editor img, #notes-editor .ql-editor img, #overview-editor .ql-editor img {
     max-width: 100%; border-radius: 8px; margin: 8px 0; cursor: pointer; vertical-align: middle;
   }
-  #itinerary-editor .ql-editor img.itinerary-image-selected, #notes-editor .ql-editor img.itinerary-image-selected {
+  #itinerary-editor .ql-editor img.itinerary-image-selected, #notes-editor .ql-editor img.itinerary-image-selected, #overview-editor .ql-editor img.itinerary-image-selected {
     outline: 2px solid var(--gold); outline-offset: 2px;
   }
   .itinerary-image-resize-handle {
@@ -698,15 +705,15 @@
     <div class="trip-sub" id="detail-sub"></div>
 
     <div class="sub-nav" id="trip-sub-nav">
-      <button data-sub="itinerary" class="active">行程規劃</button>
+      <button data-sub="overview" class="active">行程說明</button>
+      <button data-sub="itinerary">行程規劃</button>
       <button data-sub="media">照片 / 影片</button>
       <button data-sub="expenses">費用花費</button>
       <button data-sub="checklist">事項清單</button>
       <button data-sub="documents">其他文件</button>
-      <button data-sub="notes">注意事項</button>
     </div>
 
-    <div id="trip-sub-itinerary" class="trip-subview active">
+    <div id="trip-sub-itinerary" class="trip-subview">
       <div class="panel">
         <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:6px;">
           <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
@@ -947,14 +954,29 @@
       </div>
     </div>
 
-    <div id="trip-sub-notes" class="trip-subview">
+    <div id="trip-sub-overview" class="trip-subview active">
       <div class="panel">
-        <h2>注意事項</h2>
-        <div id="notes-editor-wrap">
-          <div id="notes-editor"></div>
+        <div class="sub-nav" id="overview-inner-nav" style="margin-bottom:14px;">
+          <button type="button" data-overview-sub="intro" class="active">行程簡介</button>
+          <button type="button" data-overview-sub="notes">注意事項</button>
         </div>
-        <div class="form-actions" style="margin-top:14px;">
-          <span class="status-line" id="trip-notes-status"></span>
+
+        <div id="overview-inner-intro" class="overview-inner-panel">
+          <div id="overview-editor-wrap">
+            <div id="overview-editor"></div>
+          </div>
+          <div class="form-actions" style="margin-top:14px;">
+            <span class="status-line" id="overview-status"></span>
+          </div>
+        </div>
+
+        <div id="overview-inner-notes" class="overview-inner-panel" style="display:none;">
+          <div id="notes-editor-wrap">
+            <div id="notes-editor"></div>
+          </div>
+          <div class="form-actions" style="margin-top:14px;">
+            <span class="status-line" id="trip-notes-status"></span>
+          </div>
         </div>
       </div>
     </div>
@@ -1852,6 +1874,7 @@
   // 存在獨立的 itinerary_cards 資料表裡,兩者都需要 day_date),而注意事項只是單一整篇的自由文字,
   // 沒有「天」的概念,所以這幾個按鈕沒有對應的意義,拿掉比留著會誤導使用者更好。
   let quillNotes = null;
+  let quillOverview = null;
 
   function initQuillNotes() {
     const toolbarOptions = [
@@ -1869,7 +1892,7 @@
 
     quillNotes = new Quill("#notes-editor", {
       theme: "snow",
-      modules: { toolbar: { container: toolbarOptions, handlers: { image: handleNotesImageInsert } } },
+      modules: { toolbar: { container: toolbarOptions, handlers: { image: () => handleQuillImageInsert(quillNotes) } } },
     });
 
     const toolbarEl = quillNotes.getModule("toolbar").container;
@@ -1951,6 +1974,104 @@
     initQuillImageResize(quillNotes, () => tripNotesMode, scheduleTripNotesAutoSave, "notes-image-resize-handle");
     syncFontPickerDisplayOnSelection(quillNotes);
     quillNotes.enable(false); // 預設先進入預覽(唯讀)模式,點兩下分頁按鈕才會進入編輯模式
+  }
+
+  // 「行程簡介」現在跟「注意事項」一起放在「行程說明」底下,功能上幾乎一樣(可以自由寫文字、
+  // 插入圖片),這裡直接照同一套邏輯做一份,存到 trips.overview 這個獨立欄位。
+  function initQuillOverview() {
+    const toolbarOptions = [
+      [{ header: [2, 3, false] }],
+      ["bold", "italic", "underline", "strike"],
+      [{ color: [] }, { background: [] }],
+      [{ font: ["sans", "iansui"] }],
+      [{ size: ["small", false, "large", "huge"] }],
+      [{ list: "ordered" }, { list: "bullet" }, { list: "check" }],
+      [{ indent: "-1" }, { indent: "+1" }],
+      [{ align: [] }],
+      ["link", "image"],
+      ["clean"],
+    ];
+
+    quillOverview = new Quill("#overview-editor", {
+      theme: "snow",
+      modules: { toolbar: { container: toolbarOptions, handlers: { image: () => handleQuillImageInsert(quillOverview) } } },
+    });
+
+    const toolbarEl = quillOverview.getModule("toolbar").container;
+    toolbarEl.id = "overview-toolbar";
+
+    quillOverview.getModule("toolbar").addHandler("indent", function (value) {
+      const range = this.quill.getSelection();
+      if (!range) return;
+      const lines = this.quill.getLines(range.index, range.length || 1);
+      lines.forEach((line) => {
+        const lineIndex = this.quill.getIndex(line);
+        const format = this.quill.getFormat(lineIndex, 1);
+        const currentIndent = parseInt(format.indent || 0, 10);
+
+        if (value === "-1" && currentIndent <= 0 && format.list) {
+          if (!format.listFlush) {
+            this.quill.formatLine(lineIndex, 1, "listFlush", "1", "user");
+          }
+          return;
+        }
+        if (value === "+1" && format.listFlush) {
+          this.quill.formatLine(lineIndex, 1, "listFlush", false, "user");
+          return;
+        }
+        const modifier = value === "+1" ? 1 : -1;
+        const nextIndent = Math.max(0, currentIndent + modifier);
+        this.quill.formatLine(lineIndex, 1, "indent", nextIndent === 0 ? false : nextIndent, "user");
+      });
+    });
+
+    const undoBtn = document.createElement("button");
+    undoBtn.type = "button";
+    undoBtn.id = "overview-undo-btn";
+    undoBtn.textContent = "↶";
+    undoBtn.title = "復原上一步";
+    undoBtn.addEventListener("click", () => quillOverview.history.undo());
+    toolbarEl.appendChild(undoBtn);
+
+    const redoBtn = document.createElement("button");
+    redoBtn.type = "button";
+    redoBtn.id = "overview-redo-btn";
+    redoBtn.textContent = "↷";
+    redoBtn.title = "恢復復原";
+    redoBtn.addEventListener("click", () => quillOverview.history.redo());
+    toolbarEl.appendChild(redoBtn);
+
+    quillOverview.root.addEventListener("paste", (e) => {
+      const items = Array.from(e.clipboardData?.items || []);
+      const imageItem = items.find((item) => item.type && item.type.startsWith("image/"));
+      if (!imageItem) return;
+      e.preventDefault();
+      const file = imageItem.getAsFile();
+      if (!file || !currentTripId) return;
+      const range = quillOverview.getSelection(true) || { index: quillOverview.getLength() };
+      uploadAndInsertItineraryImage(file, range.index, quillOverview).catch((err) => {
+        alert("圖片上傳失敗:" + err.message);
+      });
+    });
+
+    quillOverview.root.addEventListener("drop", (e) => {
+      const file = Array.from(e.dataTransfer?.files || []).find((f) => f.type && f.type.startsWith("image/"));
+      if (!file || !currentTripId) return;
+      e.preventDefault();
+      const range = quillOverview.getSelection(true) || { index: quillOverview.getLength() };
+      uploadAndInsertItineraryImage(file, range.index, quillOverview).catch((err) => {
+        alert("圖片上傳失敗:" + err.message);
+      });
+    });
+
+    quillOverview.on("text-change", (delta, oldDelta, source) => {
+      if (source === "user") scheduleOverviewAutoSave();
+    });
+
+    fixReliableEnterKey(quillOverview);
+    initQuillImageResize(quillOverview, () => overviewIntroMode, scheduleOverviewAutoSave, "overview-image-resize-handle");
+    syncFontPickerDisplayOnSelection(quillOverview);
+    quillOverview.enable(false); // 預設先進入預覽(唯讀)模式,點兩下分頁按鈕才會進入編輯模式
   }
 
   // ---------- 圖片:編輯模式下可以點選圖片、拖曳右下角控點自由放大縮小(行程規劃、注意事項共用) ----------
@@ -2269,9 +2390,9 @@
 
   // 「注意事項」編輯器的插入圖片按鈕,邏輯跟行程規劃的插入圖片完全一樣,
   // 只是插入的目標換成 quillNotes,共用同一套上傳/插入函式(uploadAndInsertItineraryImage)。
-  async function handleNotesImageInsert() {
+  function handleQuillImageInsert(quill) {
     if (!currentTripId) { alert("請先開啟一個行程"); return; }
-    const range = quillNotes.getSelection(true) || { index: quillNotes.getLength() };
+    const range = quill.getSelection(true) || { index: quill.getLength() };
     const insertIndex = range.index;
 
     const input = document.createElement("input");
@@ -2281,7 +2402,7 @@
       const file = input.files[0];
       if (!file) return;
       try {
-        await uploadAndInsertItineraryImage(file, insertIndex, quillNotes);
+        await uploadAndInsertItineraryImage(file, insertIndex, quill);
       } catch (err) {
         alert("圖片上傳失敗:" + err.message);
       }
@@ -2301,6 +2422,7 @@
     google.accounts.id.renderButton(document.getElementById("g_id_signin"), { theme: "outline", size: "large", text: "signin_with" });
     initQuillItinerary();
     initQuillNotes();
+    initQuillOverview();
     checkInAppBrowserWarning();
   }
 
@@ -3849,12 +3971,12 @@
   document.getElementById("back-to-trips").addEventListener("click", () => switchView("trips"));
 
   const tripSubLoaders = {
+    overview: async () => {}, // 跟行程規劃一樣,開啟行程時已經帶入,不用另外載入
     itinerary: async () => {}, // 開啟行程時已經帶入,不用另外載入
     media: loadMedia,
     expenses: async () => { await loadExchangeRates(); await loadExpenses(); },
     checklist: loadChecklist,
     documents: loadDocuments,
-    notes: async () => {}, // 跟行程規劃一樣,開啟行程時已經帶入,不用另外載入
   };
 
   // ---- 注意事項(重複使用 trips.itinerary 這個欄位存放,這欄位是舊版「單一行程文字」留下來的,
@@ -3895,6 +4017,41 @@
     tripNotesAutoSaveTimer = setTimeout(saveTripNotes, 1500);
   }
 
+  // ---- 行程簡介(跟注意事項一起放在「行程說明」底下,存在 trips.overview 這個獨立欄位) ----
+  let overviewAutoSaveTimer = null;
+  let overviewIntroMode = "preview"; // "preview":唯讀,只能看  "edit":可以編輯
+
+  async function saveOverview() {
+    if (!currentTripId || !quillOverview) return;
+    const statusEl = document.getElementById("overview-status");
+    const html = quillOverview.root.innerHTML;
+
+    const sizeInBytes = new Blob([html]).size;
+    const SAFE_LIMIT = 1.8 * 1024 * 1024;
+    if (sizeInBytes > SAFE_LIMIT) {
+      statusEl.textContent = `儲存失敗:內容太大(約 ${(sizeInBytes / 1024 / 1024).toFixed(1)}MB)。通常是有圖片被直接嵌入內容裡(而不是用連結),請找出來刪除,改用「插入圖片」按鈕重新加入。`;
+      return;
+    }
+
+    statusEl.textContent = "儲存中...";
+    try {
+      await apiFetch(`/api/trips/${currentTripId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ overview: html }),
+      });
+      statusEl.textContent = "已儲存";
+    } catch (err) {
+      statusEl.textContent = "儲存失敗:" + err.message;
+    }
+  }
+
+  function scheduleOverviewAutoSave() {
+    document.getElementById("overview-status").textContent = "編輯中...";
+    clearTimeout(overviewAutoSaveTimer);
+    overviewAutoSaveTimer = setTimeout(saveOverview, 1500);
+  }
+
   // 套用目前的預覽/編輯模式:編輯模式才顯示工具列、才能真的打字進去,
   // 分頁按鈕文字也跟著加上 (預)/(編) 後綴,提示使用者目前是哪個模式。
   function applyTripNotesMode() {
@@ -3916,31 +4073,92 @@
         img.classList.remove("itinerary-image-selected");
       });
     }
-    const notesBtn = document.querySelector('#trip-sub-nav button[data-sub="notes"]');
+    const notesBtn = document.querySelector('#overview-inner-nav button[data-overview-sub="notes"]');
     if (notesBtn) notesBtn.textContent = "注意事項" + (isEdit ? "(編)" : "(預)");
   }
 
-  // 「注意事項」分頁的點擊邏輯,跟行程規劃的每日分頁、航班/住宿資訊分頁是同一套設計:
-  // 第一次點進來(從別的分頁切過來)一律先進入預覽模式;已經在這一頁時再點一次,
-  // 才是真正切換預覽/編輯,而不是重新整理內容(避免打到一半的東西被蓋掉)。
-  function handleNotesTabClick() {
-    const wasActive = document.getElementById("trip-sub-notes").classList.contains("active");
+  function applyOverviewIntroMode() {
+    const isEdit = overviewIntroMode === "edit";
+    const toolbarEl = document.getElementById("overview-toolbar");
+    if (toolbarEl) toolbarEl.style.display = isEdit ? "" : "none";
+    if (quillOverview) quillOverview.enable(isEdit);
+    if (isEdit && quillOverview) {
+      const format = quillOverview.getFormat(0, 0);
+      forceFontPickerDisplay(quillOverview, format.font || "iansui");
+    }
+    if (!isEdit) {
+      const resizeHandle = document.getElementById("overview-image-resize-handle");
+      if (resizeHandle) resizeHandle.style.display = "none";
+      document.querySelectorAll("#overview-editor .itinerary-image-selected").forEach((img) => {
+        img.classList.remove("itinerary-image-selected");
+      });
+    }
+    const introBtn = document.querySelector('#overview-inner-nav button[data-overview-sub="intro"]');
+    if (introBtn) introBtn.textContent = "行程簡介" + (isEdit ? "(編)" : "(預)");
+  }
+
+  // 「行程說明」底下的兩個子項目(行程簡介、注意事項)共用同一排內部分頁按鈕,
+  // 這裡負責切換顯示哪一個子項目的畫面區塊、以及按鈕的 active 樣式。
+  function showOverviewInnerPanel(sub) {
+    document.querySelectorAll("#overview-inner-nav button[data-overview-sub]").forEach((b) => {
+      b.classList.toggle("active", b.dataset.overviewSub === sub);
+    });
+    document.getElementById("overview-inner-intro").style.display = sub === "intro" ? "" : "none";
+    document.getElementById("overview-inner-notes").style.display = sub === "notes" ? "" : "none";
+  }
+
+  // 「行程簡介」「注意事項」這兩個子分頁的點擊邏輯,跟行程規劃的每日分頁、航班/住宿資訊
+  // 分頁是同一套設計:第一次點進來(從另一個子項目切過來)一律先進入預覽模式;
+  // 已經在這個子項目時再點一次,才是真正切換預覽/編輯,而不是重新整理內容。
+  function handleOverviewIntroTabClick() {
+    const wasActive = document.getElementById("overview-inner-intro").style.display !== "none";
+    showOverviewInnerPanel("intro");
+    if (wasActive) {
+      if (overviewIntroMode === "edit") {
+        clearTimeout(overviewAutoSaveTimer);
+        saveOverview();
+        overviewIntroMode = "preview";
+      } else if (hasPermission("notesWrite")) {
+        overviewIntroMode = "edit";
+      }
+    } else {
+      // 從注意事項切過來,順便把注意事項重置回預覽模式,不要停在編輯模式
+      if (tripNotesMode === "edit") {
+        clearTimeout(tripNotesAutoSaveTimer);
+        saveTripNotes();
+      }
+      tripNotesMode = "preview";
+      applyTripNotesMode();
+      overviewIntroMode = "preview";
+    }
+    applyOverviewIntroMode();
+  }
+
+  function handleOverviewNotesTabClick() {
+    const wasActive = document.getElementById("overview-inner-notes").style.display !== "none";
+    showOverviewInnerPanel("notes");
     if (wasActive) {
       if (tripNotesMode === "edit") {
-        // 準備離開編輯模式,強制立即存檔,不要用會延遲 1.5 秒的自動存檔
         clearTimeout(tripNotesAutoSaveTimer);
         saveTripNotes();
         tripNotesMode = "preview";
       } else if (hasPermission("notesWrite")) {
         tripNotesMode = "edit";
       }
-      applyTripNotesMode();
     } else {
-      switchTripSubview("notes");
+      // 從行程簡介切過來,順便把行程簡介重置回預覽模式
+      if (overviewIntroMode === "edit") {
+        clearTimeout(overviewAutoSaveTimer);
+        saveOverview();
+      }
+      overviewIntroMode = "preview";
+      applyOverviewIntroMode();
       tripNotesMode = "preview";
-      applyTripNotesMode();
     }
+    applyTripNotesMode();
   }
+  document.querySelector('#overview-inner-nav button[data-overview-sub="intro"]').addEventListener("click", handleOverviewIntroTabClick);
+  document.querySelector('#overview-inner-nav button[data-overview-sub="notes"]').addEventListener("click", handleOverviewNotesTabClick);
 
   const loadedSubviews = new Set();
 
@@ -3954,14 +4172,22 @@
     // 離開時恢復成原本的名稱,不要一直掛著這個提示。
     const checklistBtn = document.querySelector('#trip-sub-nav button[data-sub="checklist"]');
     if (checklistBtn) checklistBtn.textContent = name === "checklist" ? "事項清單(私)" : "事項清單";
-    if (name !== "notes") {
-      // 離開注意事項分頁,重置成預覽模式跟按鈕文字,下次點進來一律先看預覽,不要停在編輯模式
+    if (name !== "overview") {
+      // 離開「行程說明」分頁,把底下兩個子項目都重置成預覽模式跟按鈕文字,
+      // 下次點進來一律先看行程簡介的預覽,不要停在編輯模式或停在注意事項那個子項目。
       tripNotesMode = "preview";
-      const notesBtn = document.querySelector('#trip-sub-nav button[data-sub="notes"]');
+      overviewIntroMode = "preview";
+      const notesBtn = document.querySelector('#overview-inner-nav button[data-overview-sub="notes"]');
       if (notesBtn) notesBtn.textContent = "注意事項";
+      const introBtn = document.querySelector('#overview-inner-nav button[data-overview-sub="intro"]');
+      if (introBtn) introBtn.textContent = "行程簡介";
       if (quillNotes) quillNotes.enable(false);
-      const toolbarEl = document.getElementById("notes-toolbar");
-      if (toolbarEl) toolbarEl.style.display = "none";
+      if (quillOverview) quillOverview.enable(false);
+      const notesToolbarEl = document.getElementById("notes-toolbar");
+      if (notesToolbarEl) notesToolbarEl.style.display = "none";
+      const overviewToolbarEl = document.getElementById("overview-toolbar");
+      if (overviewToolbarEl) overviewToolbarEl.style.display = "none";
+      showOverviewInnerPanel("intro");
     }
     if (!loadedSubviews.has(name)) {
       loadedSubviews.add(name);
@@ -3969,13 +4195,7 @@
     }
   }
   document.querySelectorAll("#trip-sub-nav button[data-sub]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      if (btn.dataset.sub === "notes") {
-        handleNotesTabClick();
-      } else {
-        switchTripSubview(btn.dataset.sub);
-      }
-    });
+    btn.addEventListener("click", () => switchTripSubview(btn.dataset.sub));
   });
 
   async function openTrip(tripId) {
@@ -3994,10 +4214,16 @@
     document.getElementById("itinerary-day-tabs").innerHTML = "";
     quillItinerary.setText("");
     quillNotes.setText("");
+    quillOverview.setText("");
     document.getElementById("trip-notes-status").textContent = "";
+    document.getElementById("overview-status").textContent = "";
     clearTimeout(tripNotesAutoSaveTimer);
+    clearTimeout(overviewAutoSaveTimer);
     tripNotesMode = "preview";
+    overviewIntroMode = "preview";
     applyTripNotesMode();
+    applyOverviewIntroMode();
+    showOverviewInnerPanel("intro");
 
     document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
     document.getElementById("view-trip-detail").classList.add("active");
@@ -4014,6 +4240,13 @@
       quillNotes.root.innerHTML = notesContent;
     } else {
       quillNotes.setText(notesContent || "");
+    }
+
+    const overviewContent = t.overview || "";
+    if (overviewContent && overviewContent.includes("<")) {
+      quillOverview.root.innerHTML = overviewContent;
+    } else {
+      quillOverview.setText(overviewContent || "");
     }
 
     const days = computeDateRange(t.date_start, t.date_end);
