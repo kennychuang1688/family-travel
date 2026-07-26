@@ -356,6 +356,65 @@
   .trip-subview { display: none; }
   .trip-subview.active { display: block; }
 
+  /* ---------- 行程封面(點進行程後最先看到的畫面) ---------- */
+  /* 用 #view-trip-detail 上的 showing-cover class 切換「封面」跟「頁籤內容」兩種畫面,
+     不用另外調整既有的 DOM 結構,降低改動風險。 */
+  #view-trip-detail:not(.showing-cover) .trip-cover { display: none; }
+  #view-trip-detail.showing-cover #trip-sub-nav,
+  #view-trip-detail.showing-cover .trip-subview,
+  #view-trip-detail.showing-cover #detail-title,
+  #view-trip-detail.showing-cover #detail-sub,
+  #view-trip-detail.showing-cover #back-to-cover {
+    display: none !important;
+  }
+  #view-trip-detail:not(.showing-cover) #back-to-cover { display: inline-block; }
+
+  .trip-cover-hero {
+    border-radius: var(--radius);
+    padding: 28px 24px 24px;
+    margin-bottom: 18px;
+    color: var(--on-accent);
+    background: linear-gradient(135deg, #f0ac4e 0%, #e3823d 55%, #d1673f 100%);
+    box-shadow: 0 6px 18px rgba(209, 103, 63, 0.25);
+  }
+  .trip-cover-title {
+    font-family: Georgia, "Noto Serif TC", serif; font-size: 28px; font-weight: 700;
+    margin-bottom: 6px; line-height: 1.3;
+  }
+  .trip-cover-sub { font-size: 14px; opacity: 0.92; margin-bottom: 14px; }
+  .trip-cover-countdown {
+    display: inline-block; font-size: 13px; font-weight: 600;
+    background: rgba(255,255,255,0.22); padding: 6px 14px; border-radius: 20px;
+  }
+  .trip-cover-index { display: flex; flex-direction: column; gap: 10px; }
+  .trip-cover-item {
+    display: flex; align-items: center; gap: 14px;
+    background: var(--bg-soft); border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px 16px; cursor: pointer; text-align: left; width: 100%;
+    font-family: "Iansui", "Noto Sans TC", sans-serif; color: var(--ink);
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+  }
+  .trip-cover-item:hover { box-shadow: 0 3px 10px rgba(59,42,33,0.1); transform: translateY(-1px); }
+  .trip-cover-item-icon {
+    font-size: 22px; flex: none; width: 36px; height: 36px; display: flex;
+    align-items: center; justify-content: center; border-radius: 50%;
+    background: var(--bg-softer);
+  }
+  .trip-cover-item-label { flex: 1; font-size: 16px; font-weight: 600; }
+  .trip-cover-item-arrow { flex: none; color: var(--gold); font-size: 16px; }
+
+  /* 沒有對應權限的人,封面上也不要顯示那個項目,跟頁籤按鈕的邏輯保持一致 */
+  body.no-expenses-access .trip-cover-item[data-sub="expenses"],
+  body.no-checklist-access .trip-cover-item[data-sub="checklist"],
+  body.no-documents-access .trip-cover-item[data-sub="documents"] {
+    display: none;
+  }
+
+  @media (max-width: 560px) {
+    .trip-cover-hero { padding: 22px 18px 18px; }
+    .trip-cover-title { font-size: 24px; }
+  }
+
   /* Quill 富文本編輯器 - 深色主題覆寫 */
   #itinerary-toolbar.ql-toolbar.ql-snow {
     background: var(--bg-softer);
@@ -703,8 +762,51 @@
   </div>
 
   <!-- 行程詳細頁 -->
-  <div id="view-trip-detail" class="view">
+  <div id="view-trip-detail" class="view showing-cover">
     <span class="back-link" id="back-to-trips">← 回到行程列表</span>
+
+    <!-- 行程封面:點進行程後最先看到的畫面,像一本手冊的封面+目次 -->
+    <div class="trip-cover" id="trip-cover">
+      <div class="trip-cover-hero">
+        <div class="trip-cover-title" id="cover-title"></div>
+        <div class="trip-cover-sub" id="cover-sub"></div>
+        <div class="trip-cover-countdown" id="cover-countdown"></div>
+      </div>
+      <div class="trip-cover-index" id="trip-cover-index">
+        <button type="button" class="trip-cover-item" data-sub="overview">
+          <span class="trip-cover-item-icon">������</span>
+          <span class="trip-cover-item-label">行程說明</span>
+          <span class="trip-cover-item-arrow">→</span>
+        </button>
+        <button type="button" class="trip-cover-item" data-sub="itinerary">
+          <span class="trip-cover-item-icon">������️</span>
+          <span class="trip-cover-item-label">行程規劃</span>
+          <span class="trip-cover-item-arrow">→</span>
+        </button>
+        <button type="button" class="trip-cover-item" data-sub="media">
+          <span class="trip-cover-item-icon">������</span>
+          <span class="trip-cover-item-label">照片 / 影片</span>
+          <span class="trip-cover-item-arrow">→</span>
+        </button>
+        <button type="button" class="trip-cover-item" data-sub="expenses">
+          <span class="trip-cover-item-icon">������</span>
+          <span class="trip-cover-item-label">費用花費</span>
+          <span class="trip-cover-item-arrow">→</span>
+        </button>
+        <button type="button" class="trip-cover-item" data-sub="checklist">
+          <span class="trip-cover-item-icon">✅</span>
+          <span class="trip-cover-item-label">事項清單</span>
+          <span class="trip-cover-item-arrow">→</span>
+        </button>
+        <button type="button" class="trip-cover-item" data-sub="documents">
+          <span class="trip-cover-item-icon">������</span>
+          <span class="trip-cover-item-label">其他文件</span>
+          <span class="trip-cover-item-arrow">→</span>
+        </button>
+      </div>
+    </div>
+
+    <span class="back-link" id="back-to-cover">← 回到封面</span>
     <h1 class="trip-title" id="detail-title"></h1>
     <div class="trip-sub" id="detail-sub"></div>
 
@@ -4390,6 +4492,32 @@
   // ---------- 行程詳細 ----------
   document.getElementById("back-to-trips").addEventListener("click", () => switchView("trips"));
 
+  // 計算距出發還有幾天(或行程進行中/已結束),用在封面畫面的倒數提示上
+  function computeTripCountdownText(dateStart, dateEnd) {
+    if (!dateStart) return "";
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const start = new Date(dateStart + "T00:00:00");
+    const end = dateEnd ? new Date(dateEnd + "T00:00:00") : start;
+    const msPerDay = 24 * 60 * 60 * 1000;
+    const daysToStart = Math.round((start - today) / msPerDay);
+    if (daysToStart > 0) return `������ 距出發 ${daysToStart} 天`;
+    if (today <= end) return "✈️ 行程進行中";
+    return "✅ 行程已結束";
+  }
+
+  // 點封面上的索引項目:離開封面、切換到對應頁籤
+  document.querySelectorAll(".trip-cover-item[data-sub]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.getElementById("view-trip-detail").classList.remove("showing-cover");
+      switchTripSubview(btn.dataset.sub);
+    });
+  });
+  // 從頁籤內容返回封面
+  document.getElementById("back-to-cover").addEventListener("click", () => {
+    document.getElementById("view-trip-detail").classList.add("showing-cover");
+  });
+
   const tripSubLoaders = {
     overview: async () => {}, // 跟行程規劃一樣,開啟行程時已經帶入,不用另外載入
     itinerary: async () => {}, // 開啟行程時已經帶入,不用另外載入
@@ -4647,12 +4775,19 @@
 
     document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
     document.getElementById("view-trip-detail").classList.add("active");
-    switchTripSubview("itinerary");
+    // 重設成先顯示封面畫面(不管上一個行程離開時停在封面還是頁籤內容,新開一個行程一律從封面開始看)
+    document.getElementById("view-trip-detail").classList.add("showing-cover");
+    document.getElementById("cover-title").textContent = "載入中...";
+    document.getElementById("cover-sub").textContent = "";
+    document.getElementById("cover-countdown").textContent = "";
 
     const data = await apiFetch(`/api/trips/${tripId}`);
     const t = data.trip;
     document.getElementById("detail-title").textContent = `${t.country} · ${t.location}`;
     document.getElementById("detail-sub").textContent = t.date_end ? `${t.date_start} ~ ${t.date_end}` : t.date_start;
+    document.getElementById("cover-title").textContent = `${t.country} · ${t.location}`;
+    document.getElementById("cover-sub").textContent = t.date_end ? `${t.date_start} ~ ${t.date_end}` : t.date_start;
+    document.getElementById("cover-countdown").textContent = computeTripCountdownText(t.date_start, t.date_end);
     currentTripTitle = `${t.country}_${t.location}`.replace(/[\\/:*?"<>|]/g, "");
 
     const notesContent = t.itinerary || "";
