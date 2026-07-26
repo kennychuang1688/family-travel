@@ -759,6 +759,10 @@
               <label class="field">抵達代碼<input type="text" id="flight-arr-code" placeholder="例如:CTS" /></label>
               <label class="field">抵達時間<input type="text" id="flight-arr-time" placeholder="例如:14:40" /></label>
             </div>
+            <div class="form-grid">
+              <label class="field">飛行時長<input type="text" id="flight-duration-text" placeholder="例如:3小時20分鐘" /></label>
+              <label class="field">備註<input type="text" id="flight-notes" placeholder="例如:需要轉機、行李直掛等提醒事項" /></label>
+            </div>
             <div class="form-actions">
               <button class="primary" id="flight-add-btn">新增航班</button>
               <button class="ghost" id="flight-cancel-edit-btn" style="display:none;">取消編輯</button>
@@ -1099,6 +1103,20 @@
     const ua = navigator.userAgent || "";
     if (/iPad|iPhone|iPod/.test(ua)) return true;
     return navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+  }
+
+  // 把使用者輸入的文字轉成安全的 HTML(把 & < > " ' 都轉成對應的 HTML 實體)。
+  // 任何「使用者自己填寫的內容」要塞進 innerHTML 樣板字串之前,都要先經過這個函式處理,
+  // 避免有人在說明文字/備註/名稱這類欄位裡打入 <script> 或 <img onerror=...> 之類的內容,
+  // 讓其他登入的家人打開頁面時被瀏覽器當成真的 HTML/JS 執行(儲存型 XSS)。
+  function escapeHtml(value) {
+    if (value === null || value === undefined) return "";
+    return String(value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
   }
 
   // ---------- 照片/影片預覽(Lightbox) ----------
@@ -2340,7 +2358,7 @@
         const item = document.createElement("button");
         item.type = "button";
         item.className = "bm-picker-item";
-        item.innerHTML = `<span class="bm-day-tag">${mmdd}</span>${bm.label}`;
+        item.innerHTML = `<span class="bm-day-tag">${escapeHtml(mmdd)}</span>${escapeHtml(bm.label)}`;
         item.addEventListener("click", () => {
           insertBookmarkLink(range, bm.day, bm.id);
           overlay.style.display = "none";
@@ -3695,6 +3713,7 @@
     "flight-date", "flight-airline", "flight-no",
     "flight-dep-name", "flight-dep-terminal", "flight-dep-code", "flight-dep-time",
     "flight-arr-name", "flight-arr-terminal", "flight-arr-code", "flight-arr-time",
+    "flight-duration-text", "flight-notes",
   ];
 
   async function loadFlights() {
@@ -3717,23 +3736,24 @@
       const dirLabel = f.direction === "outbound" ? "去程" : f.direction === "return" ? "回程" : "其他";
       card.innerHTML = `
         <div class="flight-card-header">
-          <span class="flight-no">${f.airline || ""}${f.flight_no ? " " + f.flight_no : ""} · ${dirLabel}</span>
-          <span>${f.flight_date || ""}</span>
+          <span class="flight-no">${escapeHtml(f.airline)}${f.flight_no ? " " + escapeHtml(f.flight_no) : ""} · ${escapeHtml(dirLabel)}</span>
+          <span>${escapeHtml(f.flight_date)}</span>
         </div>
         <div class="flight-card-route">
           <div class="flight-endpoint">
-            <div class="flight-code">${f.dep_code || "—"}</div>
-            <div class="flight-time">${f.dep_time || ""}</div>
-            <div class="flight-place">${f.dep_name || ""}${f.dep_terminal ? " · " + f.dep_terminal : ""}</div>
+            <div class="flight-code">${f.dep_code ? escapeHtml(f.dep_code) : "—"}</div>
+            <div class="flight-time">${escapeHtml(f.dep_time)}</div>
+            <div class="flight-place">${escapeHtml(f.dep_name)}${f.dep_terminal ? " · " + escapeHtml(f.dep_terminal) : ""}</div>
           </div>
           <div class="flight-arrow">✈</div>
           <div class="flight-endpoint">
-            <div class="flight-code">${f.arr_code || "—"}</div>
-            <div class="flight-time">${f.arr_time || ""}</div>
-            <div class="flight-place">${f.arr_name || ""}${f.arr_terminal ? " · " + f.arr_terminal : ""}</div>
+            <div class="flight-code">${f.arr_code ? escapeHtml(f.arr_code) : "—"}</div>
+            <div class="flight-time">${escapeHtml(f.arr_time)}</div>
+            <div class="flight-place">${escapeHtml(f.arr_name)}${f.arr_terminal ? " · " + escapeHtml(f.arr_terminal) : ""}</div>
           </div>
         </div>
-        ${f.notes ? `<div class="flight-notes">${f.notes}</div>` : ""}
+        ${f.duration_text ? `<div class="flight-notes">飛行時長:${escapeHtml(f.duration_text)}</div>` : ""}
+        ${f.notes ? `<div class="flight-notes">${escapeHtml(f.notes)}</div>` : ""}
       `;
       const actionsWrap = document.createElement("div");
       actionsWrap.className = "flight-card-actions";
@@ -3818,6 +3838,8 @@
     document.getElementById("flight-arr-terminal").value = f.arr_terminal || "";
     document.getElementById("flight-arr-code").value = f.arr_code || "";
     document.getElementById("flight-arr-time").value = f.arr_time || "";
+    document.getElementById("flight-duration-text").value = f.duration_text || "";
+    document.getElementById("flight-notes").value = f.notes || "";
     document.getElementById("flight-add-btn").textContent = "更新航班";
     document.getElementById("flight-cancel-edit-btn").style.display = "inline-block";
     document.getElementById("flight-status").textContent = "編輯中...";
@@ -3848,6 +3870,8 @@
       arrTerminal: document.getElementById("flight-arr-terminal").value,
       arrCode: document.getElementById("flight-arr-code").value,
       arrTime: document.getElementById("flight-arr-time").value,
+      durationText: document.getElementById("flight-duration-text").value,
+      notes: document.getElementById("flight-notes").value,
     };
     if (!body.depName || !body.arrName) { alert("請至少輸入出發地與抵達地名稱"); return; }
     statusEl.textContent = editingFlightId ? "正在更新..." : "正在儲存並定位地點(需要幾秒鐘)...";
@@ -3944,17 +3968,17 @@
         ? `${a.price} ${a.currency || "TWD"}` : "—";
       card.innerHTML = `
         <div class="flight-card-header">
-          <span class="flight-no">${a.name || ""}</span>
-          <span>${a.check_in_date || ""}${a.check_out_date ? " ~ " + a.check_out_date : ""}</span>
+          <span class="flight-no">${escapeHtml(a.name)}</span>
+          <span>${escapeHtml(a.check_in_date)}${a.check_out_date ? " ~ " + escapeHtml(a.check_out_date) : ""}</span>
         </div>
         <div class="accommodation-card-body">
-          <div><span class="arow-label">入住</span>${a.check_in_date || ""} ${a.check_in_time || ""}</div>
-          <div><span class="arow-label">退房</span>${a.check_out_date || ""} ${a.check_out_time || ""}</div>
-          ${a.address ? `<div><span class="arow-label">地址</span>${a.address}</div>` : ""}
-          ${a.confirmation_no ? `<div><span class="arow-label">訂單編號</span>${a.confirmation_no}</div>` : ""}
-          <div><span class="arow-label">金額</span>${priceText}</div>
+          <div><span class="arow-label">入住</span>${escapeHtml(a.check_in_date)} ${escapeHtml(a.check_in_time)}</div>
+          <div><span class="arow-label">退房</span>${escapeHtml(a.check_out_date)} ${escapeHtml(a.check_out_time)}</div>
+          ${a.address ? `<div><span class="arow-label">地址</span>${escapeHtml(a.address)}</div>` : ""}
+          ${a.confirmation_no ? `<div><span class="arow-label">訂單編號</span>${escapeHtml(a.confirmation_no)}</div>` : ""}
+          <div><span class="arow-label">金額</span>${escapeHtml(priceText)}</div>
         </div>
-        ${a.notes ? `<div class="flight-notes">${a.notes}</div>` : ""}
+        ${a.notes ? `<div class="flight-notes">${escapeHtml(a.notes)}</div>` : ""}
       `;
       const actionsWrap = document.createElement("div");
       actionsWrap.className = "flight-card-actions";
@@ -5002,7 +5026,7 @@
       }
 
       const tr = document.createElement("tr");
-      tr.innerHTML = `<td>${e.date || ""}</td><td>${e.category || ""}</td><td>${e.description || ""}</td><td>${e.amount} ${e.currency}</td><td>${twdText}</td><td>${e.payment_status || "尚未付款"}</td><td style="text-align:right; white-space:nowrap;"></td>`;
+      tr.innerHTML = `<td>${escapeHtml(e.date)}</td><td>${escapeHtml(e.category)}</td><td>${escapeHtml(e.description)}</td><td>${escapeHtml(e.amount)} ${escapeHtml(e.currency)}</td><td>${escapeHtml(twdText)}</td><td>${escapeHtml(e.payment_status || "尚未付款")}</td><td style="text-align:right; white-space:nowrap;"></td>`;
       const editBtn = document.createElement("button");
       editBtn.className = "ghost expense-edit-btn";
       editBtn.textContent = "編輯";
@@ -5200,7 +5224,7 @@
 
     for (const d of items) {
       const tr = document.createElement("tr");
-      tr.innerHTML = `<td><span class="doc-type-tag">${d.doc_type}</span></td><td>${d.name}</td><td></td>`;
+      tr.innerHTML = `<td><span class="doc-type-tag">${escapeHtml(d.doc_type)}</span></td><td>${escapeHtml(d.name)}</td><td></td>`;
       const downloadBtn = document.createElement("button");
       downloadBtn.className = "ghost";
       downloadBtn.textContent = "下載";
@@ -5608,7 +5632,7 @@
       emptyEl.style.display = logs.length === 0 ? "block" : "none";
       for (const l of logs) {
         const tr = document.createElement("tr");
-        tr.innerHTML = `<td>${l.timestamp}</td><td>${l.email}</td><td>${l.action}</td><td>${l.detail}</td>`;
+        tr.innerHTML = `<td>${escapeHtml(l.timestamp)}</td><td>${escapeHtml(l.email)}</td><td>${escapeHtml(l.action)}</td><td>${escapeHtml(l.detail)}</td>`;
         tbody.appendChild(tr);
       }
     } catch (err) {
