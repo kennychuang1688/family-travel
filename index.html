@@ -95,6 +95,12 @@
   body.no-media-download #lightbox-download-btn {
     display: none !important;
   }
+  body.no-media-edit .media-name {
+    display: none !important;
+  }
+  body.no-media-edit .media-caption-textarea:placeholder-shown {
+    display: none !important; /* 還沒有說明文字、只是顯示提示文字的空白欄位,對沒有編輯權限的角色沒有意義,直接隱藏 */
+  }
   body.no-expenses-write #expense-form-area,
   body.no-expenses-write .expense-edit-btn {
     display: none !important;
@@ -2423,6 +2429,13 @@
       if (!hasPermission("mediaDownload")) document.body.classList.add("no-media-download");
       if (!hasPermission("expensesDelete")) document.body.classList.add("no-expenses-delete");
       if (!hasPermission("expensesWrite")) document.body.classList.add("no-expenses-write");
+      if (!hasPermission("expensesWrite")) {
+        // 匯率設定要「看得到但不能編輯」,不是整個藏起來,所以用 disabled 屬性,不是用 CSS 隱藏
+        ["exchange-rate-currency", "exchange-rate-value", "exchange-rate-save-btn", "exchange-rate-clear-btn"].forEach((id) => {
+          const el = document.getElementById(id);
+          if (el) el.disabled = true;
+        });
+      }
       if (!hasPermission("checklistDelete")) document.body.classList.add("no-checklist-delete");
       if (!hasPermission("documentsDelete")) document.body.classList.add("no-documents-delete");
 
@@ -4329,6 +4342,7 @@
     captionInput.rows = 2;
     captionInput.placeholder = "加上說明文字...";
     captionInput.value = m.caption || "";
+    captionInput.readOnly = !hasPermission("mediaEdit"); // 沒有編輯權限的角色只能看,不能改
     captionInput.dataset.mediaId = m.id;
     captionInput.addEventListener("change", async () => {
       try {
