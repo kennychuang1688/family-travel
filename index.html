@@ -509,6 +509,8 @@
     color: var(--ink); padding: 6px 9px; width: 100%; font-family: "Iansui", "Noto Sans TC", sans-serif;
   }
   .itinerary-card-title {
+    border: 1px solid var(--line); border-radius: 7px; background: var(--bg-softer);
+    color: var(--ink); font-family: "Iansui", "Noto Sans TC", sans-serif;
     font-size: 18px !important; font-weight: 700 !important;
     resize: none; overflow: hidden; line-height: 1.25;
     padding: 4px 9px !important;
@@ -1689,6 +1691,7 @@
 
     fixReliableEnterKey(quillItinerary);
     interceptCardFieldFontPicker(quillItinerary);
+    interceptCardFieldColorPicker(quillItinerary);
     syncFontPickerDisplayOnSelection(quillItinerary);
     initQuillImageResize(quillItinerary, () => itineraryDayMode, scheduleAutoSave, "itinerary-image-resize-handle");
   }
@@ -1814,6 +1817,53 @@
   // Quill 的字型選單其實是靠一個隱藏的原生 <select class="ql-font"> 元素驅動的,這裡直接監聽
   // 那個元素的 change 事件,用 capture 階段搶在 Quill 自己的處理邏輯之前執行——如果判斷要攔截,
   // 就呼叫 stopImmediatePropagation() 不讓 Quill 也跟著把這次選擇套用到行程內文的目前游標位置上。
+  // 跟字型選單同樣的道理,再另外攔截文字顏色、背景顏色這兩個下拉選單——Quill 原生一樣是
+  // 用隱藏的 <select class="ql-color">/<select class="ql-background"> 驅動的。時間欄位
+  // 不支援顏色(沒有逐字選取的概念,整欄位上色意義不大),只處理標題/說明這種文字選取範圍。
+  function interceptCardFieldColorPicker(quill) {
+    const toolbarEl = quill.getModule("toolbar").container;
+    ["color", "background"].forEach((kind) => {
+      const select = toolbarEl.querySelector(`select.ql-${kind}`);
+      if (!select) return;
+
+      select.addEventListener("change", (e) => {
+        const context = lastCardFieldContext;
+        if (!context || !document.body.contains(context.field) || context.type !== "range") return; // 不是卡片欄位的文字選取,讓 Quill 照原本的方式處理
+
+        e.stopImmediatePropagation();
+        const value = select.value;
+
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(context.range);
+
+        if (!context.range.collapsed) {
+          const span = document.createElement("span");
+          if (kind === "color") span.style.color = value || "";
+          else span.style.backgroundColor = value || "";
+          try {
+            context.range.surroundContents(span);
+          } catch (err) {
+            const contents = context.range.extractContents();
+            span.appendChild(contents);
+            context.range.insertNode(span);
+          }
+        }
+
+        const card = findCardForField(context.field);
+        const fieldName = context.field.dataset.field;
+        if (card && fieldName) {
+          const oldValue = card[fieldName];
+          card[fieldName] = context.field.innerHTML;
+          recordCardFieldChange(card.id, fieldName, oldValue, card[fieldName]);
+          scheduleCardSave(card.id);
+        }
+
+        lastCardFieldContext = null;
+      }, true); // 用 capture 階段監聽,確保搶在 Quill 自己的處理邏輯之前執行
+    });
+  }
+
   function interceptCardFieldFontPicker(quill) {
     // 只要目前實際的選取範圍不是落在任何卡片欄位裡面,就清掉可能殘留的舊卡片欄位紀錄——
     // 不然選過一次卡片欄位之後,那個紀錄會一直卡著,之後不管在哪裡選字、套字型,
