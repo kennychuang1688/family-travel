@@ -554,6 +554,7 @@
     .itinerary-card-duration-value { width: 50px !important; font-size: 19px !important; }
     .itinerary-card-right { flex-direction: row; justify-content: flex-end; gap: 8px; }
     .itinerary-card-move-group, .itinerary-card-nav-group { flex-direction: row; }
+    .itinerary-card-nav-btn { font-size: 30px !important; padding: 8px !important; }
     .itinerary-card-main { margin-top: 6px; gap: 0; }
     .itinerary-card-title { font-size: 26px !important; line-height: 1.35 !important; }
     .itinerary-card-desc { font-size: 20px !important; line-height: 1.5 !important; }
@@ -1317,6 +1318,21 @@
     return navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
   }
 
+  // 開啟外部連結(在新分頁)。刻意不用 window.open(url, "_blank"),因為在手機版 Chrome 上,
+  // 如果連結是 Google 地圖這種會被系統攔截、直接改用 App 開啟的網址,window.open 會先開出
+  // 一個空白分頁,等系統把使用者導去 App 之後,那個空白分頁就一直留在那裡、沒有內容。
+  // 改用「建立一個暫時的 <a> 標籤、模擬使用者真的點擊它」的方式,瀏覽器對這種「看起來像
+  // 真人點的超連結」處理 App 導向的方式比較正確,不會留下空白分頁。
+  function openExternalLink(url) {
+    const a = document.createElement("a");
+    a.href = url;
+    a.target = "_blank";
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
   // 把使用者輸入的文字轉成安全的 HTML(把 & < > " ' 都轉成對應的 HTML 實體)。
   // 任何「使用者自己填寫的內容」要塞進 innerHTML 樣板字串之前,都要先經過這個函式處理,
   // 避免有人在說明文字/備註/名稱這類欄位裡打入 <script> 或 <img onerror=...> 之類的內容,
@@ -1935,7 +1951,7 @@
       const href = link.getAttribute("href") || "";
       if (!href || href.startsWith("javascript:")) return;
       e.preventDefault();
-      window.open(href, "_blank", "noopener");
+      openExternalLink(href);
     });
 
     // 攔截「貼上圖片」(Ctrl+V)與「拖曳圖片」,改成跟按插入圖片按鈕一樣自動上傳到雲端。
@@ -3661,12 +3677,13 @@
 
     const navBtn = document.createElement("button");
     navBtn.type = "button";
+    navBtn.className = "itinerary-card-nav-btn";
     navBtn.title = "開啟地點連結";
     navBtn.textContent = "➤";
     navBtn.addEventListener("click", () => {
       const link = (card.map_link || "").trim();
       if (!link) { alert("這個行程項目還沒有設定地點連結,請先點旁邊的「✎」設定一個連結(例如 Google 地圖分享連結)。"); return; }
-      window.open(link, "_blank", "noopener");
+      openExternalLink(link);
     });
 
     const editLinkBtn = document.createElement("button");
