@@ -1293,10 +1293,31 @@
   function loadQuillContent(quill, html) {
     try {
       const delta = quill.clipboard.convert(html);
+      fixExtraBlankLineAfterImage(delta);
       quill.setContents(delta, "silent");
     } catch (err) {
       console.warn("透過 Quill 正規流程載入內容失敗,改用原本的直接寫入方式:", err);
       quill.root.innerHTML = html;
+    }
+  }
+
+  // 已知的 Quill 轉換誤差:如果圖片後面緊接著下一段內容(使用者已經手動用 Backspace 刪掉
+  // 中間的空白行,讓圖片跟下面的文字/連結緊貼在一起),clipboard.convert() 重新解析時,
+  // 常常會在圖片後面「無中生有」多插入一個空白行——這就是「編輯時明明是貼在一起的,
+  // 但登出登入後空白又跑回來」的原因。這裡在轉換完成後掃一次結果,把「圖片後面緊接著
+  // 兩個以上的換行」自動收斂成一個換行,把這個多餘的空行拿掉,只在這個特定情況下動手,
+  // 不影響其他正常的空白行。
+  function fixExtraBlankLineAfterImage(delta) {
+    const ops = delta.ops || [];
+    for (let i = 0; i < ops.length; i++) {
+      const op = ops[i];
+      const isImageInsert = op.insert && typeof op.insert === "object" && op.insert.image;
+      if (!isImageInsert) continue;
+      const next = ops[i + 1];
+      const isBlankLine = next && typeof next.insert === "string" && /^\n+$/.test(next.insert) && next.insert.length > 1;
+      if (isBlankLine) {
+        ops[i + 1] = { insert: "\n" }; // 只留圖片自己站一行需要的那一個換行
+      }
     }
   }
 
