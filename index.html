@@ -1263,9 +1263,6 @@
   const WORKER_URL = "https://family-drive-site.kennychuang.workers.dev";
   // =====================
 
-  // 偵測是否為 iOS 裝置(iPhone / iPad / iPod)。iPadOS 從 13 開始,Safari 的 userAgent
-  // 會偽裝成桌機版 Mac,單看 userAgent 認不出來,所以額外用「navigator.platform 回報是
-  // Mac,但同時支援多點觸控」這個特徵來判斷是不是其實是 iPad。
   // ---------- EditorCore:行程表格卡片(藍框)專用的編輯器操作介面 ----------
   // 這一層存在的目的,是讓卡片相關的程式碼(新增/刪除/搬移/補齊卡片內容)不用直接摸
   // quillItinerary 這個 Quill 實體本身的原始 API。工具列/書籤功能(綠框)是 quillItinerary
@@ -1273,52 +1270,19 @@
   //
   // 注意:這一層目前完全是「原封不動包一層」,內部做的事情跟直接呼叫 quillItinerary 一模一樣,
   // 沒有改變任何行為,純粹只是把呼叫的對象換掉,方便以後如果要抽換底層編輯器,只需要改這裡。
-  // 把 HTML 字串安全地載入到某個 Quill 實體裡,取代直接寫 `quill.root.innerHTML = html` 的做法。
+  // 把 HTML 字串載入到某個 Quill 實體裡。
   //
-  // 直接寫 innerHTML 是繞過 Quill 自己的內部文件模型(Quill 內部是用叫做 Delta 的格式,
-  // 記錄「這份文件現在長什麼樣子」,工具列格式化、復原/重做、卡片位置搬移這些操作都是靠
-  // 這份內部紀錄運作的,不是直接讀 DOM)。Quill 事後雖然會自己想辦法把 DOM 的變化「補記」
-  // 回內部紀錄,但不保證每次補記的結果都跟正規流程一模一樣。
+  // 這裡刻意直接寫 quill.root.innerHTML,不透過 Quill 的 clipboard.convert() + setContents()
+  // 這個「正規流程」——曾經改成走正規流程,理論上比較嚴謹(Quill 內部的紀錄會跟畫面完全一致),
+  // 但實際上會踩到 Quill 本身在解析圖片相鄰內容時的一個已知誤差:如果圖片後面緊接著下一段
+  // 內容(例如使用者手動刪掉中間的空白行,讓圖片跟文字/連結貼在一起),重新解析時常常會在
+  // 圖片後面「無中生有」多插入一個空白行,而且每次切換天數、重新載入,都會再疊加一次,
+  // 變成空白行隨著使用次數一直增加、越來越誇張。
   //
-  // 改成先呼叫 quill.clipboard.convert(html) 把 HTML 轉換成 Quill 看得懂的 Delta,再用
-  // setContents() 正式設定進去,這樣 Quill 內部的紀錄從一開始就跟畫面顯示的內容完全一致,
-  // 不用依賴那個「事後補記」的機制。
-  //
-  // source 傳 "silent",是為了不要把「載入內容」這個動作本身算進復原歷史裡——不然使用者
-  // 切換到某一天、看到內容之後馬上按「復原」,結果變成復原成空白,而不是復原自己剛打的字。
-  //
-  // 保留 try/catch:萬一某些既有內容裡有 Quill 無法正常轉換的怪異結構(理論上不應該發生,
-  // 但既有資料無法保證每一筆都完美),寧可退回原本「直接寫 innerHTML」的舊做法,至少讓
-  // 使用者看得到內容,不要因為這次改進反而讓畫面整個空白。
+  // 相較之下,直接寫 innerHTML 這個做法穩定運作了很長一段時間,從來沒有出現過這個問題,
+  // 所以改回這個做法,不要再冒風險去追求「理論上更嚴謹」但實際上會咬人的正規流程。
   function loadQuillContent(quill, html) {
-    try {
-      const delta = quill.clipboard.convert(html);
-      fixExtraBlankLineAfterImage(delta);
-      quill.setContents(delta, "silent");
-    } catch (err) {
-      console.warn("透過 Quill 正規流程載入內容失敗,改用原本的直接寫入方式:", err);
-      quill.root.innerHTML = html;
-    }
-  }
-
-  // 已知的 Quill 轉換誤差:如果圖片後面緊接著下一段內容(使用者已經手動用 Backspace 刪掉
-  // 中間的空白行,讓圖片跟下面的文字/連結緊貼在一起),clipboard.convert() 重新解析時,
-  // 常常會在圖片後面「無中生有」多插入一個空白行——這就是「編輯時明明是貼在一起的,
-  // 但登出登入後空白又跑回來」的原因。這裡在轉換完成後掃一次結果,把「圖片後面緊接著
-  // 兩個以上的換行」自動收斂成一個換行,把這個多餘的空行拿掉,只在這個特定情況下動手,
-  // 不影響其他正常的空白行。
-  function fixExtraBlankLineAfterImage(delta) {
-    const ops = delta.ops || [];
-    for (let i = 0; i < ops.length; i++) {
-      const op = ops[i];
-      const isImageInsert = op.insert && typeof op.insert === "object" && op.insert.image;
-      if (!isImageInsert) continue;
-      const next = ops[i + 1];
-      const isBlankLine = next && typeof next.insert === "string" && /^\n+$/.test(next.insert) && next.insert.length > 1;
-      if (isBlankLine) {
-        ops[i + 1] = { insert: "\n" }; // 只留圖片自己站一行需要的那一個換行
-      }
-    }
+    quill.root.innerHTML = html;
   }
 
   const EditorCore = {
