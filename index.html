@@ -3333,7 +3333,7 @@
       });
 
       const deleteBtn = document.createElement("button");
-      deleteBtn.className = "danger";
+      deleteBtn.className = "ghost"; // 不用紅字,跟其他一般操作按鈕維持一致的視覺重量
       deleteBtn.textContent = "移除";
       deleteBtn.addEventListener("click", async (e) => {
         e.stopPropagation();
@@ -5771,7 +5771,7 @@
         }
       });
       const deleteBtn = document.createElement("button");
-      deleteBtn.className = "danger document-delete-btn";
+      deleteBtn.className = "ghost document-delete-btn"; // 不用紅字,跟其他一般操作按鈕維持一致的視覺重量
       deleteBtn.textContent = "刪除";
       deleteBtn.addEventListener("click", async () => {
         if (!confirm(`確定要刪除「${d.name}」嗎?`)) return;
