@@ -890,7 +890,10 @@
             <button type="button" id="accommodation-info-tab-btn" class="day-tab flight-info-tab">⌂ 住宿資訊</button>
             <div id="itinerary-day-tabs" class="day-tabs" style="margin:0;"></div>
           </div>
-          <button class="ghost" id="export-word-btn">轉成 Word 檔</button>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <button class="ghost" id="export-word-btn">轉成 Word 檔</button>
+            <span class="status-line" id="tab-size-hint"></span>
+          </div>
         </div>
         <div id="itinerary-editor-wrap">
           <div id="itinerary-editor"></div>
@@ -3385,6 +3388,34 @@
     return days;
   }
 
+  // 滑鼠移到分頁列的按鈕上時,在「轉成 Word 檔」旁邊顯示這個分頁目前用掉多少存檔空間。
+  // 之所以會需要這個提示,是因為每一天的行程內容(連同行程簡介/注意事項)都各自存在
+  // 資料庫的「單一欄位」裡,而 Cloudflare D1 這個資料庫服務,單一欄位有 2MB 的硬性上限
+  // (不能透過付費方案調高),超過就會存檔失敗——這裡讓使用者能隨時看到目前用量,
+  // 提早發現「是不是不小心貼了一張很大的圖片進去」,不用等存檔失敗才知道。
+  function formatByteSizeHint(bytes) {
+    const limitBytes = 2 * 1024 * 1024;
+    const mb = (bytes / 1024 / 1024).toFixed(2);
+    const percent = Math.round((bytes / limitBytes) * 100);
+    return `目前用量:約 ${mb}MB / 2MB(${percent}%)`;
+  }
+  function showTabSizeHint(text) {
+    document.getElementById("tab-size-hint").textContent = text;
+  }
+  function hideTabSizeHint() {
+    document.getElementById("tab-size-hint").textContent = "";
+  }
+  document.getElementById("flight-info-tab-btn").addEventListener("mouseenter", () => {
+    // 航班/住宿資訊存在獨立的資料表裡,一筆一筆分開存,不會受到「單一欄位 2MB」這個限制,
+    // 所以這裡顯示的是說明文字,不是實際用量百分比。
+    showTabSizeHint("航班資訊:每筆資料獨立存放,沒有單一欄位大小限制");
+  });
+  document.getElementById("flight-info-tab-btn").addEventListener("mouseleave", hideTabSizeHint);
+  document.getElementById("accommodation-info-tab-btn").addEventListener("mouseenter", () => {
+    showTabSizeHint("住宿資訊:每筆資料獨立存放,沒有單一欄位大小限制");
+  });
+  document.getElementById("accommodation-info-tab-btn").addEventListener("mouseleave", hideTabSizeHint);
+
   function renderDayTabs(days) {
     const container = document.getElementById("itinerary-day-tabs");
     container.innerHTML = "";
@@ -3397,6 +3428,17 @@
       btn.dataset.baseLabel = baseLabel;
       btn.textContent = baseLabel;
       btn.addEventListener("click", () => switchItineraryDay(date));
+      btn.addEventListener("mouseenter", () => {
+        // 如果目前正看著這一天,畫面上的內容可能還沒存檔、記憶體裡的快取也還沒更新,
+        // 這種情況下直接讀「當下編輯器裡實際的內容」,量出來的大小才會是最新的;
+        // 其他還沒切換過去的天數,就用已經抓回來、存在記憶體裡的快取內容計算。
+        const html = date === currentItineraryDate && quillItinerary
+          ? quillItinerary.root.innerHTML
+          : (itineraryDayContents[date] || "");
+        const bytes = new Blob([html]).size;
+        showTabSizeHint(formatByteSizeHint(bytes));
+      });
+      btn.addEventListener("mouseleave", hideTabSizeHint);
       container.appendChild(btn);
     });
   }
