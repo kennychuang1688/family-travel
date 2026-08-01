@@ -2944,10 +2944,31 @@
       itp_support: true,         // 加強 Safari(iPhone 常用瀏覽器)的相容性
     });
     google.accounts.id.renderButton(document.getElementById("g_id_signin"), { theme: "outline", size: "large", text: "signin_with" });
+    scheduleSilentTokenRefresh();
     initQuillItinerary();
     initQuillNotes();
     initQuillOverview();
     checkInAppBrowserWarning();
+  }
+
+  // Google 核發的登入權杖,效期大約 1 小時,過期之後所有存檔都會失敗,而且不會自動恢復,
+  // 要等使用者重新整理頁面、重新登入才會拿到新的權杖——這正是「編輯到一半,過一陣子存檔
+  // 突然失敗、內容救不回來」的根本原因之一。
+  //
+  // 這裡改成每 45 分鐘(留一點安全空間,不要卡在剛好 1 小時的邊界)主動呼叫一次
+  // google.accounts.id.prompt(),嘗試「悄悄地」拿一個新權杖——如果使用者的瀏覽器裡,
+  // Google 登入的狀態還有效,這個動作通常會安靜地在背景完成,不會跳出任何畫面、
+  // 也不會打斷使用者正在做的事情;真正發生作用的地方在 handleCredentialResponse 裡
+  // (那裡會判斷「這是背景換權杖,不是第一次登入」,只更新權杖、不會影響畫面)。
+  function scheduleSilentTokenRefresh() {
+    setInterval(() => {
+      if (!idToken) return; // 還沒登入過,不用換
+      try {
+        google.accounts.id.prompt();
+      } catch (err) {
+        console.warn("背景更新登入權杖失敗(可以先忽略,等權杖真的過期時還有備援提示):", err);
+      }
+    }, 45 * 60 * 1000);
   }
 
   // 偵測是否在 LINE / Messenger / Instagram 等 App 內建瀏覽器(webview)開啟。
@@ -3039,7 +3060,14 @@
   }
 
   async function handleCredentialResponse(response) {
+    // 如果「登入畫面」已經被隱藏起來,代表使用者本來就已經是登入狀態——這次呼叫是背景悄悄
+    // 換發新權杖(見下面的 scheduleSilentTokenRefresh),不是使用者剛按下登入按鈕的第一次登入。
+    // 這種情況只更新權杖就好,不要重跑一次完整的登入流程,更不能執行到後面的 switchView("trips"),
+    // 不然使用者正在編輯到一半的畫面,會無緣無故被強制跳回行程列表,嚇到人。
+    const alreadyLoggedIn = document.getElementById("gate").style.display === "none";
     idToken = response.credential;
+    if (alreadyLoggedIn) return;
+
     const errorEl = document.getElementById("auth-error");
     errorEl.textContent = "";
     try {
@@ -4038,6 +4066,17 @@
     }
   }
 
+  // 判斷存檔失敗的原因是不是「登入權杖過期」,是的話給一個明確、使用者馬上知道該怎麼辦的
+  // 提示(叫他重新整理頁面),而不是原封不動顯示後端那句技術性的錯誤訊息。
+  // 對應後端 verifyIdToken() 過期時丟出的那句話(worker.js 裡的 "Google ID Token 無效或已過期")。
+  function formatSaveErrorMessage(err) {
+    const msg = (err && err.message) || "";
+    if (msg.includes("Token") || msg.includes("過期") || msg.includes("登入憑證")) {
+      return "⚠️ 儲存失敗:登入已過期,請立即重新整理頁面、重新登入,才能繼續存檔(內容目前還留在畫面上,重新整理前请先複製起來備份)。";
+    }
+    return "儲存失敗:" + msg;
+  }
+
   async function saveCurrentDayContent(silent) {
     if (!currentItineraryDate || !currentTripId) return;
     const html = quillItinerary.root.innerHTML;
@@ -4061,7 +4100,7 @@
       });
       statusEl.textContent = "已儲存";
     } catch (err) {
-      statusEl.textContent = "儲存失敗:" + err.message;
+      statusEl.textContent = formatSaveErrorMessage(err);
     }
   }
 
@@ -4689,7 +4728,7 @@
       });
       statusEl.textContent = "已儲存";
     } catch (err) {
-      statusEl.textContent = "儲存失敗:" + err.message;
+      statusEl.textContent = formatSaveErrorMessage(err);
     }
   }
 
@@ -4724,7 +4763,7 @@
       });
       statusEl.textContent = "已儲存";
     } catch (err) {
-      statusEl.textContent = "儲存失敗:" + err.message;
+      statusEl.textContent = formatSaveErrorMessage(err);
     }
   }
 
