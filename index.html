@@ -84,7 +84,7 @@
   body.no-itinerary-write #flight-form-area,
   body.no-itinerary-write #accommodation-form-area,
   body.no-itinerary-write .flight-card-actions,
-  body.no-itinerary-write #itinerary-clear-day-btn,
+  body.no-itinerary-write #itinerary-backup-btn,
   body.no-itinerary-write #itinerary-history-btn {
     display: none !important;
   }
@@ -894,8 +894,8 @@
           </div>
           <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
             <button class="ghost" id="export-word-btn">轉成 Word 檔</button>
-            <button class="ghost" id="itinerary-history-btn">������ 歷史版本</button>
-            <button class="ghost" id="itinerary-clear-day-btn">清空這一天</button>
+            <button class="ghost" id="itinerary-history-btn">&#128337; 歷史版本</button>
+            <button class="ghost" id="itinerary-backup-btn">設定備份</button>
             <span class="status-line" id="tab-size-hint"></span>
           </div>
         </div>
@@ -913,7 +913,7 @@
             <button type="button" class="ghost" id="itinerary-history-close-btn" style="font-size:12px; padding:4px 10px;">關閉</button>
           </div>
           <p style="font-size:12px; color:rgba(59,42,33,0.6); margin:0 0 10px;">
-            存檔時會自動留一份快照(同一天至少間隔 5 分鐘才會再留一次,最多保留最近 30 筆)。
+            不會自動存,只有按上面「設定備份」時才會留一份目前的快照,最多保留最新 10 筆(超過會自動刪掉最舊的)。
             萬一內容不小心被蓋掉,可以在這裡選一個之前的版本還原回來——還原本身也會先留一份目前的快照,選錯了還能再還原回去。
           </p>
           <div id="itinerary-history-list"></div>
@@ -5145,24 +5145,23 @@
 
   document.getElementById("export-word-btn").addEventListener("click", exportItineraryToWord);
 
-  // 「清空這一天」:唯一一個允許把這一天內容真的存成空白的管道。跟正常的自動存檔不一樣,
-  // 這裡明確帶 force:true,告訴後端「這不是意外,是使用者真的要這樣做」,繞過後端那道
-  // 「原本有內容卻要存成空的,先擋下來」的保護機制。
-  document.getElementById("itinerary-clear-day-btn").addEventListener("click", async () => {
-    if (!currentItineraryDate || !currentTripId) return;
-    if (!confirm(`確定要把「${document.querySelector('#itinerary-day-tabs .day-tab.active')?.dataset.baseLabel || "這一天"}」的內容整個清空嗎?\n\n清空前會自動留一份快照在「歷史版本」裡,如果清空後反悔,可以到歷史版本裡還原回來。`)) return;
+  // 「設定備份」:手動把「目前畫面上的內容」存一份快照到歷史版本裡。
+  // 不會自動觸發,只有按這個按鈕才會留存,最多保留最新 10 筆(後端會自動清掉更舊的)。
+  document.getElementById("itinerary-backup-btn").addEventListener("click", async () => {
+    if (!currentItineraryDate || !currentTripId || !quillItinerary) return;
     const statusEl = document.getElementById("itinerary-status");
-    statusEl.textContent = "清空中...";
+    statusEl.textContent = "備份中...";
     try {
-      await apiFetch(`/api/trips/${currentTripId}/itinerary-days/${currentItineraryDate}`, {
-        method: "PUT",
+      await apiFetch(`/api/trips/${currentTripId}/itinerary-days/${currentItineraryDate}/history`, {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: "", force: true }),
+        body: JSON.stringify({ content: quillItinerary.root.innerHTML }),
       });
-      itineraryDayContents[currentItineraryDate] = "";
-      quillItinerary.setText("");
-      statusEl.textContent = "已儲存";
-      refreshCurrentDaySizeHint();
+      statusEl.textContent = "已設定備份";
+      // 如果歷史版本面板剛好是打開的,順便重新整理清單,馬上看得到剛存的這一筆
+      if (document.getElementById("itinerary-history-panel").style.display !== "none") {
+        openItineraryHistoryPanel();
+      }
     } catch (err) {
       statusEl.textContent = formatSaveErrorMessage(err);
     }
@@ -5184,7 +5183,7 @@
       const data = await apiFetch(`/api/trips/${currentTripId}/itinerary-days/${currentItineraryDate}/history`);
       const items = data.history || [];
       if (items.length === 0) {
-        listEl.innerHTML = "<p style='font-size:13px; color:rgba(59,42,33,0.5);'>這一天目前還沒有留存任何歷史版本(存檔時,同一天至少間隔 5 分鐘才會留一次快照)。</p>";
+        listEl.innerHTML = "<p style='font-size:13px; color:rgba(59,42,33,0.5);'>這一天目前還沒有任何備份,按上面的「設定備份」建立第一筆。</p>";
         return;
       }
       listEl.innerHTML = "";
