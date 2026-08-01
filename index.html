@@ -5158,6 +5158,7 @@
         body: JSON.stringify({ content: quillItinerary.root.innerHTML }),
       });
       statusEl.textContent = "已設定備份";
+      alert("備份完成");
       // 如果歷史版本面板剛好是打開的,順便重新整理清單,馬上看得到剛存的這一筆
       if (document.getElementById("itinerary-history-panel").style.display !== "none") {
         openItineraryHistoryPanel();
