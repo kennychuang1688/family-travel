@@ -5173,6 +5173,18 @@
     document.getElementById("itinerary-history-panel").style.display = "none";
   });
 
+  // 把後端存的 UTC 時間字串,轉成台灣時間的「YYYY-MM-DD 時:分:秒」格式。
+  // 直接手動加 8 小時、用 UTC 系列方法組字串,不依賴瀏覽器自己的時區設定或 locale 格式,
+  // 不管使用者的裝置設定在哪個時區、用哪種語言,顯示出來的格式都會是同一種、固定的樣子。
+  function formatTaiwanDateTime(isoString) {
+    if (!isoString) return "";
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return isoString;
+    const t = new Date(d.getTime() + 8 * 60 * 60 * 1000);
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${t.getUTCFullYear()}-${pad(t.getUTCMonth() + 1)}-${pad(t.getUTCDate())} ${pad(t.getUTCHours())}:${pad(t.getUTCMinutes())}:${pad(t.getUTCSeconds())}`;
+  }
+
   async function openItineraryHistoryPanel() {
     if (!currentItineraryDate || !currentTripId) return;
     const panel = document.getElementById("itinerary-history-panel");
@@ -5190,7 +5202,7 @@
       items.forEach((item) => {
         const row = document.createElement("div");
         row.style.cssText = "display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 0; border-bottom:1px solid var(--line);";
-        const savedAtText = escapeHtml(item.savedAt || "");
+        const savedAtText = escapeHtml(formatTaiwanDateTime(item.savedAt));
         const previewText = escapeHtml(item.preview || "(這個版本沒有文字內容)");
         const sizeText = `${(item.length / 1024).toFixed(1)} KB`;
         row.innerHTML = `
