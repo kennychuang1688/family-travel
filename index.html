@@ -3399,22 +3399,37 @@
     const percent = Math.round((bytes / limitBytes) * 100);
     return `目前用量:約 ${mb}MB / 2MB(${percent}%)`;
   }
-  function showTabSizeHint(text) {
-    document.getElementById("tab-size-hint").textContent = text;
+  const TAB_SIZE_WARNING_BYTES = 1.5 * 1024 * 1024; // 超過 1.5MB 就顯示成紅色提醒,提早注意、不要等到真的存檔失敗
+  function showTabSizeHint(text, bytes) {
+    const el = document.getElementById("tab-size-hint");
+    el.textContent = text;
+    el.style.color = (typeof bytes === "number" && bytes > TAB_SIZE_WARNING_BYTES) ? "var(--danger)" : "";
   }
   function hideTabSizeHint() {
-    document.getElementById("tab-size-hint").textContent = "";
+    showTabSizeHint("", null);
+  }
+  // 目前這一天,只要處在「編輯模式」,用量提示就持續顯示,不會因為滑鼠移開分頁列就消失——
+  // 這樣打字打到一半也能隨時瞄一眼目前累積到多少,不用特地把滑鼠移回分頁列上才看得到。
+  // 滑鼠移到別的分頁按鈕再移開時,也會呼叫這個函式,自動恢復顯示「目前這一天」的持續提示
+  // (如果目前這一天不是編輯模式,就會正確地顯示空白,不會殘留錯誤的資訊)。
+  function refreshCurrentDaySizeHint() {
+    if (itineraryDayMode === "edit" && currentItineraryDate && quillItinerary) {
+      const bytes = new Blob([quillItinerary.root.innerHTML]).size;
+      showTabSizeHint(formatByteSizeHint(bytes), bytes);
+    } else {
+      hideTabSizeHint();
+    }
   }
   document.getElementById("flight-info-tab-btn").addEventListener("mouseenter", () => {
     // 航班/住宿資訊存在獨立的資料表裡,一筆一筆分開存,不會受到「單一欄位 2MB」這個限制,
     // 所以這裡顯示的是說明文字,不是實際用量百分比。
     showTabSizeHint("航班資訊:每筆資料獨立存放,沒有單一欄位大小限制");
   });
-  document.getElementById("flight-info-tab-btn").addEventListener("mouseleave", hideTabSizeHint);
+  document.getElementById("flight-info-tab-btn").addEventListener("mouseleave", refreshCurrentDaySizeHint);
   document.getElementById("accommodation-info-tab-btn").addEventListener("mouseenter", () => {
     showTabSizeHint("住宿資訊:每筆資料獨立存放,沒有單一欄位大小限制");
   });
-  document.getElementById("accommodation-info-tab-btn").addEventListener("mouseleave", hideTabSizeHint);
+  document.getElementById("accommodation-info-tab-btn").addEventListener("mouseleave", refreshCurrentDaySizeHint);
 
   function renderDayTabs(days) {
     const container = document.getElementById("itinerary-day-tabs");
@@ -3436,9 +3451,9 @@
           ? quillItinerary.root.innerHTML
           : (itineraryDayContents[date] || "");
         const bytes = new Blob([html]).size;
-        showTabSizeHint(formatByteSizeHint(bytes));
+        showTabSizeHint(formatByteSizeHint(bytes), bytes);
       });
-      btn.addEventListener("mouseleave", hideTabSizeHint);
+      btn.addEventListener("mouseleave", refreshCurrentDaySizeHint);
       container.appendChild(btn);
     });
   }
@@ -4079,6 +4094,7 @@
     statusEl.textContent = "編輯中...";
     clearTimeout(autoSaveTimer);
     autoSaveTimer = setTimeout(() => saveCurrentDayContent(true), 1500);
+    refreshCurrentDaySizeHint(); // 打字的當下就更新用量提示,不用等存檔完成才看得到最新數字
   }
 
   let itineraryDayMode = "preview"; // "preview":唯讀,只能看  "edit":可以編輯
@@ -4099,6 +4115,7 @@
     }
 
     applyItineraryCardEditability(); // 用目前的預覽/編輯模式,重新套用內文中行程表格卡片是否可編輯
+    refreshCurrentDaySizeHint(); // 進入編輯模式就開始持續顯示用量;切回預覽模式就恢復隱藏
 
     if (!isEdit) {
       // 切到預覽模式,取消圖片的選取狀態、隱藏調整尺寸的控點
