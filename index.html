@@ -83,7 +83,9 @@
   }
   body.no-itinerary-write #flight-form-area,
   body.no-itinerary-write #accommodation-form-area,
-  body.no-itinerary-write .flight-card-actions {
+  body.no-itinerary-write .flight-card-actions,
+  body.no-itinerary-write #itinerary-clear-day-btn,
+  body.no-itinerary-write #itinerary-history-btn {
     display: none !important;
   }
   body.no-media-upload #media-file-input,
@@ -890,8 +892,10 @@
             <button type="button" id="accommodation-info-tab-btn" class="day-tab flight-info-tab">⌂ 住宿資訊</button>
             <div id="itinerary-day-tabs" class="day-tabs" style="margin:0;"></div>
           </div>
-          <div style="display:flex; align-items:center; gap:10px;">
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
             <button class="ghost" id="export-word-btn">轉成 Word 檔</button>
+            <button class="ghost" id="itinerary-history-btn">������ 歷史版本</button>
+            <button class="ghost" id="itinerary-clear-day-btn">清空這一天</button>
             <span class="status-line" id="tab-size-hint"></span>
           </div>
         </div>
@@ -901,6 +905,18 @@
         <div class="form-actions" style="margin-top:14px;">
           <span class="status-line" id="itinerary-status">已儲存</span>
           <span class="status-line" id="export-word-status"></span>
+        </div>
+
+        <div id="itinerary-history-panel" style="display:none; margin-top:14px; padding:16px; border:1px solid var(--line); border-radius:10px; background:var(--bg-softer);">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+            <strong>這一天的歷史版本</strong>
+            <button type="button" class="ghost" id="itinerary-history-close-btn" style="font-size:12px; padding:4px 10px;">關閉</button>
+          </div>
+          <p style="font-size:12px; color:rgba(59,42,33,0.6); margin:0 0 10px;">
+            存檔時會自動留一份快照(同一天至少間隔 5 分鐘才會再留一次,最多保留最近 30 筆)。
+            萬一內容不小心被蓋掉,可以在這裡選一個之前的版本還原回來——還原本身也會先留一份目前的快照,選錯了還能再還原回去。
+          </p>
+          <div id="itinerary-history-list"></div>
         </div>
 
         <div id="flight-info-panel" style="display:none;">
@@ -4177,6 +4193,7 @@
         quillItinerary.setText(content || "");
       }
       document.getElementById("itinerary-status").textContent = "已儲存";
+      document.getElementById("itinerary-history-panel").style.display = "none"; // 換天了,上一天的歷史版本清單不該還留著
       itineraryDayMode = "preview"; // 切到不同的一天,一律先進入預覽模式
       CardStore.reset(); // 先清空,避免切換瞬間短暫顯示上一天的舊卡片
       loadItineraryCards(date); // 載入這一天的行程表格卡片
@@ -5127,6 +5144,100 @@
   }
 
   document.getElementById("export-word-btn").addEventListener("click", exportItineraryToWord);
+
+  // 「清空這一天」:唯一一個允許把這一天內容真的存成空白的管道。跟正常的自動存檔不一樣,
+  // 這裡明確帶 force:true,告訴後端「這不是意外,是使用者真的要這樣做」,繞過後端那道
+  // 「原本有內容卻要存成空的,先擋下來」的保護機制。
+  document.getElementById("itinerary-clear-day-btn").addEventListener("click", async () => {
+    if (!currentItineraryDate || !currentTripId) return;
+    if (!confirm(`確定要把「${document.querySelector('#itinerary-day-tabs .day-tab.active')?.dataset.baseLabel || "這一天"}」的內容整個清空嗎?\n\n清空前會自動留一份快照在「歷史版本」裡,如果清空後反悔,可以到歷史版本裡還原回來。`)) return;
+    const statusEl = document.getElementById("itinerary-status");
+    statusEl.textContent = "清空中...";
+    try {
+      await apiFetch(`/api/trips/${currentTripId}/itinerary-days/${currentItineraryDate}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: "", force: true }),
+      });
+      itineraryDayContents[currentItineraryDate] = "";
+      quillItinerary.setText("");
+      statusEl.textContent = "已儲存";
+      refreshCurrentDaySizeHint();
+    } catch (err) {
+      statusEl.textContent = formatSaveErrorMessage(err);
+    }
+  });
+
+  // 「歷史版本」面板:開啟時載入這一天的歷史快照清單,每一筆都可以個別還原
+  document.getElementById("itinerary-history-btn").addEventListener("click", openItineraryHistoryPanel);
+  document.getElementById("itinerary-history-close-btn").addEventListener("click", () => {
+    document.getElementById("itinerary-history-panel").style.display = "none";
+  });
+
+  async function openItineraryHistoryPanel() {
+    if (!currentItineraryDate || !currentTripId) return;
+    const panel = document.getElementById("itinerary-history-panel");
+    const listEl = document.getElementById("itinerary-history-list");
+    panel.style.display = "block";
+    listEl.innerHTML = "載入中...";
+    try {
+      const data = await apiFetch(`/api/trips/${currentTripId}/itinerary-days/${currentItineraryDate}/history`);
+      const items = data.history || [];
+      if (items.length === 0) {
+        listEl.innerHTML = "<p style='font-size:13px; color:rgba(59,42,33,0.5);'>這一天目前還沒有留存任何歷史版本(存檔時,同一天至少間隔 5 分鐘才會留一次快照)。</p>";
+        return;
+      }
+      listEl.innerHTML = "";
+      items.forEach((item) => {
+        const row = document.createElement("div");
+        row.style.cssText = "display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 0; border-bottom:1px solid var(--line);";
+        const savedAtText = escapeHtml(item.savedAt || "");
+        const previewText = escapeHtml(item.preview || "(這個版本沒有文字內容)");
+        const sizeText = `${(item.length / 1024).toFixed(1)} KB`;
+        row.innerHTML = `
+          <div style="flex:1; min-width:0;">
+            <div style="font-size:13px; font-weight:600;">${savedAtText}</div>
+            <div style="font-size:12px; color:rgba(59,42,33,0.6); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${previewText}(約 ${sizeText})</div>
+          </div>
+        `;
+        const restoreBtn = document.createElement("button");
+        restoreBtn.type = "button";
+        restoreBtn.className = "ghost";
+        restoreBtn.style.cssText = "flex:none; font-size:12px; padding:6px 12px;";
+        restoreBtn.textContent = "還原這個版本";
+        restoreBtn.addEventListener("click", () => restoreItineraryHistoryItem(item.id));
+        row.appendChild(restoreBtn);
+        listEl.appendChild(row);
+      });
+    } catch (err) {
+      listEl.innerHTML = `<p style="color:var(--danger); font-size:13px;">載入歷史版本失敗:${escapeHtml(err.message)}</p>`;
+    }
+  }
+
+  async function restoreItineraryHistoryItem(historyId) {
+    if (!confirm("確定要還原成這個版本嗎?\n\n目前畫面上的內容,會先自動留一份快照,還原後如果反悔,一樣可以在歷史版本裡再還原回來。")) return;
+    try {
+      await apiFetch(`/api/itinerary-day-history/${historyId}/restore`, { method: "POST" });
+      // 還原成功後,直接重新載入目前這一天的內容,讓畫面立刻反映還原結果
+      const data = await apiFetch(`/api/trips/${currentTripId}/itinerary-days`);
+      for (const row of data.days || []) {
+        itineraryDayContents[row.day_date] = row.content;
+      }
+      const content = itineraryDayContents[currentItineraryDate] || "";
+      if (content && content.includes("<")) {
+        EditorCore.setContentHtml(content);
+        migrateLegacyDriveImageUrls();
+      } else {
+        quillItinerary.setText(content || "");
+      }
+      document.getElementById("itinerary-status").textContent = "已還原";
+      refreshCurrentDaySizeHint();
+      openItineraryHistoryPanel(); // 重新整理清單,讓使用者看到剛才這次還原也已經留了一筆新的快照
+    } catch (err) {
+      alert("還原失敗:" + err.message);
+    }
+  }
+
 
   // ---- 相簿 ----
   document.getElementById("sync-media-btn").addEventListener("click", async () => {
