@@ -1850,12 +1850,6 @@
   let quillItinerary = null;
   let itineraryDayContents = {};
   let currentItineraryDate = null;
-  // 記錄「每一天,從上次成功存檔之後,使用者是不是真的有動過內容」——每一天各自獨立記錄
-  // (不是單一個全域旗標),避免「切換到別天時背景還在存檔的舊請求,晚一步完成時,
-  // 誤把已經切換過去、正在編輯的新一天的旗標也重置掉」這種跨天互相干擾的情況。
-  // 直接沿用 text-change 事件裡「source === 'user'」這個本來就已經穩定運作、用來觸發
-  // 自動存檔的判斷依據,不重新設計一套新的內容比對邏輯。
-  let itineraryDirtyByDay = {};
   let currentTripTitle = "";
   let itineraryCardSaveTimers = {};
   let suppressCardHydration = false; // 執行「移動/刪除卡片」這種一次要動好幾步 Quill 內容的操作時,暫時關閉自動補齊,避免中途觸發的 text-change 誤判成「內容不見了,自動補一份」而造成重複或殘影
@@ -2174,7 +2168,6 @@
       if (source === "user") {
         scheduleAutoSave();
         lastQuillChangeAt = Date.now();
-        if (currentItineraryDate) itineraryDirtyByDay[currentItineraryDate] = true; // 使用者真的有動作,才需要在離開編輯模式時真的存檔
       }
       if (!suppressCardHydration) CardRenderer.sync(); // 確保任何新出現的行程表格空殼都被填上實際內容
     });
@@ -4069,23 +4062,9 @@
   }
 
   async function saveCurrentDayContent(silent) {
-    // 一開始就先記住這次是要存「哪一天」,接下來全程都用這個區域變數,不要再讀取
-    // currentItineraryDate 這個全域變數——因為這是背景執行的非同步函式,執行途中使用者
-    // 完全可能已經切換到別的一天,如果中途又去讀取 currentItineraryDate,會讀到「新的、
-    // 錯的那一天」,導致存錯地方或誤判錯的旗標。
-    const date = currentItineraryDate;
-    if (!date || !currentTripId) return;
-
-    // 從上次成功存檔之後,如果這一天都沒有真正的使用者編輯動作(旗標沒被打開過),
-    // 這次就不用真的送出存檔請求——常見情境:按了編輯模式、其實什麼都沒改,
-    // 又切回預覽模式,這種狀況省下一次不必要的資料庫寫入,Log 紀錄也會跟著乾淨一點。
-    if (!itineraryDirtyByDay[date]) {
-      document.getElementById("itinerary-status").textContent = "已儲存";
-      return;
-    }
-
+    if (!currentItineraryDate || !currentTripId) return;
     const html = quillItinerary.root.innerHTML;
-    itineraryDayContents[date] = html;
+    itineraryDayContents[currentItineraryDate] = html;
     const statusEl = document.getElementById("itinerary-status");
 
     // 資料庫單一欄位上限是 2MB,提早檢查、給明確提示,不要等後端回傳不容易懂的錯誤才發現
@@ -4098,12 +4077,11 @@
 
     if (!silent) statusEl.textContent = "儲存中...";
     try {
-      await apiFetch(`/api/trips/${currentTripId}/itinerary-days/${date}`, {
+      await apiFetch(`/api/trips/${currentTripId}/itinerary-days/${currentItineraryDate}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: html }),
       });
-      itineraryDirtyByDay[date] = false; // 這次成功存進去了,重新歸零,等下一次真正的使用者編輯才會再變成 true
       statusEl.textContent = "已儲存";
     } catch (err) {
       statusEl.textContent = formatSaveErrorMessage(err);
@@ -4180,7 +4158,6 @@
       } else {
         quillItinerary.setText(content || "");
       }
-      itineraryDirtyByDay[date] = false; // 剛載入進來的內容不算「使用者編輯過」,重設成沒有異動
       document.getElementById("itinerary-status").textContent = "已儲存";
       document.getElementById("itinerary-history-panel").style.display = "none"; // 換天了,上一天的歷史版本清單不該還留著
       itineraryDayMode = "preview"; // 切到不同的一天,一律先進入預覽模式
@@ -4944,7 +4921,6 @@
     document.getElementById("detail-title").textContent = "載入中...";
     document.getElementById("detail-sub").textContent = "";
     itineraryDayContents = {};
-    itineraryDirtyByDay = {};
     currentItineraryDate = null;
     document.getElementById("itinerary-day-tabs").innerHTML = "";
     quillItinerary.setText("");
@@ -5232,7 +5208,6 @@
       } else {
         quillItinerary.setText(content || "");
       }
-      itineraryDirtyByDay[currentItineraryDate] = false; // 剛還原回來的內容不算「使用者編輯過」,重設成沒有異動
       document.getElementById("itinerary-status").textContent = "已還原";
       openItineraryHistoryPanel(); // 重新整理清單,讓使用者看到剛才這次還原也已經留了一筆新的快照
     } catch (err) {
