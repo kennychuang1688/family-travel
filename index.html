@@ -1852,7 +1852,12 @@
   // 記錄每一天「上一次真的成功存進資料庫」的內容,存檔前先跟這個比對,一樣的話就不用真的
   // 送出這次請求——常見情境:按了編輯模式、其實什麼都沒改,又切回預覽模式,這種狀況不需要
   // 真的寫一次資料庫、也不用在 Log 裡留下一筆看起來像有異動、但實際上內容沒變的紀錄。
-  let lastSavedItineraryContent = {};
+  //
+  // 這裡存的是 Quill 內部的 Delta 資料(JSON 字串化),不是 innerHTML 這種 DOM 字串——
+  // 因為切換預覽/編輯模式時,行程表格卡片的欄位會被切換 disabled、contenteditable、
+  // 按鈕顯示與否,這些畫面呈現的技術性狀態也會反映在 innerHTML 裡,如果直接比 innerHTML,
+  // 光是切換模式本身就會被誤判成「內容不一樣」。Delta 只記錄真正的內容,不受這些影響。
+  let lastSavedItineraryDelta = {};
   let currentItineraryDate = null;
   let currentTripTitle = "";
   let itineraryCardSaveTimers = {};
@@ -4073,7 +4078,10 @@
     // 這次要存的內容,跟「上一次真的成功存進資料庫」的內容一模一樣的話,不用真的送出這次請求——
     // 常見情境:按了編輯模式、其實什麼都沒改,又切回預覽模式,這種狀況省下一次不必要的
     // 資料庫寫入,Log 紀錄也會跟著乾淨一點。
-    if (lastSavedItineraryContent[currentItineraryDate] === html) {
+    // 用 Quill 的 Delta(只記錄真正的內容)比對,不要用 innerHTML(還包含畫面上
+    // disabled/contenteditable 這些預覽/編輯模式切換時會變動的技術性狀態)。
+    const deltaJson = JSON.stringify(quillItinerary.getContents());
+    if (lastSavedItineraryDelta[currentItineraryDate] === deltaJson) {
       itineraryDayContents[currentItineraryDate] = html;
       statusEl.textContent = "已儲存";
       return;
@@ -4096,7 +4104,7 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: html }),
       });
-      lastSavedItineraryContent[currentItineraryDate] = html; // 記錄這次成功存進去的內容,當作下次比對的基準
+      lastSavedItineraryDelta[currentItineraryDate] = deltaJson; // 記錄這次成功存進去的內容,當作下次比對的基準
       statusEl.textContent = "已儲存";
     } catch (err) {
       statusEl.textContent = formatSaveErrorMessage(err);
@@ -4173,10 +4181,8 @@
       } else {
         quillItinerary.setText(content || "");
       }
-      // 把「瀏覽器實際解析、渲染出來的內容」當作這一天的比對基準,而不是資料庫存的原始字串——
-      // 兩者即使畫面上一模一樣,字串本身可能因為瀏覽器對 HTML 格式的細微正規化而對不起來,
-      // 拿資料庫原始字串去跟瀏覽器讀出來的內容比,會導致「什麼都沒改」也一直被誤判成「不一樣」。
-      lastSavedItineraryContent[date] = quillItinerary.root.innerHTML;
+      // 把 Quill 的 Delta(只記錄真正的內容,不含畫面呈現的技術性狀態)當作這一天的比對基準。
+      lastSavedItineraryDelta[date] = JSON.stringify(quillItinerary.getContents());
       document.getElementById("itinerary-status").textContent = "已儲存";
       document.getElementById("itinerary-history-panel").style.display = "none"; // 換天了,上一天的歷史版本清單不該還留著
       itineraryDayMode = "preview"; // 切到不同的一天,一律先進入預覽模式
@@ -4940,7 +4946,7 @@
     document.getElementById("detail-title").textContent = "載入中...";
     document.getElementById("detail-sub").textContent = "";
     itineraryDayContents = {};
-    lastSavedItineraryContent = {};
+    lastSavedItineraryDelta = {};
     currentItineraryDate = null;
     document.getElementById("itinerary-day-tabs").innerHTML = "";
     quillItinerary.setText("");
@@ -5005,7 +5011,9 @@
       const idata = await apiFetch(`/api/trips/${tripId}/itinerary-days`);
       for (const row of idata.days || []) {
         itineraryDayContents[row.day_date] = row.content;
-        lastSavedItineraryContent[row.day_date] = row.content;
+        // 這裡不設定 lastSavedItineraryDelta——資料庫原始字串沒辦法直接轉成 Quill 的 Delta
+        // 拿來比對,要等實際切換進某一天、內容真的載入編輯器之後(見 switchItineraryDay),
+        // 才會正確設定這一天的比對基準。
       }
     } catch (err) { /* 沒有資料時忽略即可 */ }
 
@@ -5221,7 +5229,6 @@
       const data = await apiFetch(`/api/trips/${currentTripId}/itinerary-days`);
       for (const row of data.days || []) {
         itineraryDayContents[row.day_date] = row.content;
-        lastSavedItineraryContent[row.day_date] = row.content;
       }
       const content = itineraryDayContents[currentItineraryDate] || "";
       if (content && content.includes("<")) {
@@ -5230,6 +5237,8 @@
       } else {
         quillItinerary.setText(content || "");
       }
+      // 內容真的載入編輯器之後,才用 Quill 的 Delta 設定這一天的比對基準
+      lastSavedItineraryDelta[currentItineraryDate] = JSON.stringify(quillItinerary.getContents());
       document.getElementById("itinerary-status").textContent = "已還原";
       openItineraryHistoryPanel(); // 重新整理清單,讓使用者看到剛才這次還原也已經留了一筆新的快照
     } catch (err) {
