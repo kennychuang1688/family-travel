@@ -4064,6 +4064,7 @@
   async function saveCurrentDayContent(silent) {
     if (!currentItineraryDate || !currentTripId) return;
     const html = quillItinerary.root.innerHTML;
+    itineraryDayContents[currentItineraryDate] = html;
     const statusEl = document.getElementById("itinerary-status");
 
     // 資料庫單一欄位上限是 2MB,提早檢查、給明確提示,不要等後端回傳不容易懂的錯誤才發現
@@ -4081,11 +4082,6 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: html }),
       });
-      // 只有確定真的存檔成功了,才更新暫存記憶體——如果這次讀到的畫面內容剛好有問題
-      // (例如高速連續切換編輯/預覽模式時,Quill 畫面還沒繪製完成就被讀到暫時性的空白),
-      // 存檔會被後端擋下來(見後端「原本有內容卻要存成空的」保護)或送出失敗,這種情況下
-      // 暫存記憶體會維持上一次「確定有效」的內容,不會被這次可疑的讀取結果污染掉。
-      itineraryDayContents[currentItineraryDate] = html;
       statusEl.textContent = "已儲存";
     } catch (err) {
       statusEl.textContent = formatSaveErrorMessage(err);
