@@ -1849,6 +1849,10 @@
   let currentTripId = null;
   let quillItinerary = null;
   let itineraryDayContents = {};
+  // 記錄每一天「上一次真的成功存進資料庫」的內容,存檔前先跟這個比對,一樣的話就不用真的
+  // 送出這次請求——常見情境:按了編輯模式、其實什麼都沒改,又切回預覽模式,這種狀況不需要
+  // 真的寫一次資料庫、也不用在 Log 裡留下一筆看起來像有異動、但實際上內容沒變的紀錄。
+  let lastSavedItineraryContent = {};
   let currentItineraryDate = null;
   let currentTripTitle = "";
   let itineraryCardSaveTimers = {};
@@ -4064,8 +4068,18 @@
   async function saveCurrentDayContent(silent) {
     if (!currentItineraryDate || !currentTripId) return;
     const html = quillItinerary.root.innerHTML;
-    itineraryDayContents[currentItineraryDate] = html;
     const statusEl = document.getElementById("itinerary-status");
+
+    // 這次要存的內容,跟「上一次真的成功存進資料庫」的內容一模一樣的話,不用真的送出這次請求——
+    // 常見情境:按了編輯模式、其實什麼都沒改,又切回預覽模式,這種狀況省下一次不必要的
+    // 資料庫寫入,Log 紀錄也會跟著乾淨一點。
+    if (lastSavedItineraryContent[currentItineraryDate] === html) {
+      itineraryDayContents[currentItineraryDate] = html;
+      statusEl.textContent = "已儲存";
+      return;
+    }
+
+    itineraryDayContents[currentItineraryDate] = html;
 
     // 資料庫單一欄位上限是 2MB,提早檢查、給明確提示,不要等後端回傳不容易懂的錯誤才發現
     const sizeInBytes = new Blob([html]).size;
@@ -4082,6 +4096,7 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: html }),
       });
+      lastSavedItineraryContent[currentItineraryDate] = html; // 記錄這次成功存進去的內容,當作下次比對的基準
       statusEl.textContent = "已儲存";
     } catch (err) {
       statusEl.textContent = formatSaveErrorMessage(err);
@@ -4921,6 +4936,7 @@
     document.getElementById("detail-title").textContent = "載入中...";
     document.getElementById("detail-sub").textContent = "";
     itineraryDayContents = {};
+    lastSavedItineraryContent = {};
     currentItineraryDate = null;
     document.getElementById("itinerary-day-tabs").innerHTML = "";
     quillItinerary.setText("");
@@ -4985,6 +5001,7 @@
       const idata = await apiFetch(`/api/trips/${tripId}/itinerary-days`);
       for (const row of idata.days || []) {
         itineraryDayContents[row.day_date] = row.content;
+        lastSavedItineraryContent[row.day_date] = row.content;
       }
     } catch (err) { /* 沒有資料時忽略即可 */ }
 
@@ -5200,6 +5217,7 @@
       const data = await apiFetch(`/api/trips/${currentTripId}/itinerary-days`);
       for (const row of data.days || []) {
         itineraryDayContents[row.day_date] = row.content;
+        lastSavedItineraryContent[row.day_date] = row.content;
       }
       const content = itineraryDayContents[currentItineraryDate] || "";
       if (content && content.includes("<")) {
