@@ -2959,7 +2959,6 @@
       itp_support: true,         // 加強 Safari(iPhone 常用瀏覽器)的相容性
     });
     google.accounts.id.renderButton(document.getElementById("g_id_signin"), { theme: "outline", size: "large", text: "signin_with" });
-    scheduleSilentTokenRefresh();
     initQuillItinerary();
     initQuillNotes();
     initQuillOverview();
@@ -2975,16 +2974,9 @@
   // Google 登入的狀態還有效,這個動作通常會安靜地在背景完成,不會跳出任何畫面、
   // 也不會打斷使用者正在做的事情;真正發生作用的地方在 handleCredentialResponse 裡
   // (那裡會判斷「這是背景換權杖,不是第一次登入」,只更新權杖、不會影響畫面)。
-  function scheduleSilentTokenRefresh() {
-    setInterval(() => {
-      if (!idToken) return; // 還沒登入過,不用換
-      try {
-        google.accounts.id.prompt();
-      } catch (err) {
-        console.warn("背景更新登入權杖失敗(可以先忽略,等權杖真的過期時還有備援提示):", err);
-      }
-    }, 45 * 60 * 1000);
-  }
+  // 舊的「每 45 分鐘悄悄更新一次」機制已經移除,改成「每次呼叫 API 前先檢查權杖夠不夠新鮮」
+  // (見下面的 apiFetch/refreshIdTokenIfNeeded),這樣涵蓋更精準,不用再另外維護一個獨立的
+  // 定時器,也不會有兩套機制同時各自呼叫 google.accounts.id.prompt()、互相打架的疑慮。
 
   // 偵測是否在 LINE / Messenger / Instagram 等 App 內建瀏覽器(webview)開啟。
   // Google 從 2021 年起基於安全考量,直接封鎖這類內嵌瀏覽器的登入,不管網站怎麼寫都無法正常登入,
@@ -3004,7 +2996,104 @@
   }
   window.onload = initGoogleSignIn;
 
+  // ---------- 每次呼叫 API 前,先確認登入權杖夠不夠新鮮 ----------
+
+  const TOKEN_EXPIRY_BUFFER_MS = 3 * 60 * 1000; // 距離真正過期還剩 3 分鐘內,就視為「快過期了」
+  const TOKEN_REFRESH_WAIT_MS = 4 * 1000; // 嘗試背景更新時,最多等這麼久看有沒有拿到新權杖
+
+  // 權杖(idToken)是一種叫 JWT 的格式,裡面本來就直接寫著什麼時候會過期(exp 這個時間戳記),
+  // 不用另外問 Google,在瀏覽器本機解碼這串文字就能立刻知道——這個動作是純本機運算,
+  // 不會送出任何網路請求,速度是毫秒等級,感覺不出任何延遲。
+  function getIdTokenExpiryMs() {
+    if (!idToken) return 0;
+    try {
+      const payloadBase64 = idToken.split(".")[1];
+      const payloadJson = decodeURIComponent(
+        atob(payloadBase64.replace(/-/g, "+").replace(/_/g, "/"))
+          .split("")
+          .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+          .join("")
+      );
+      return (JSON.parse(payloadJson).exp || 0) * 1000;
+    } catch (err) {
+      return 0; // 解析失敗,當作不知道到期時間,保守處理成「需要更新」
+    }
+  }
+  function isIdTokenExpiringSoon() {
+    const expiryMs = getIdTokenExpiryMs();
+    if (!expiryMs) return true;
+    return expiryMs - Date.now() < TOKEN_EXPIRY_BUFFER_MS;
+  }
+
+  // 同一時間只允許一個「更新權杖」的動作在進行,短時間內好幾個 API 請求同時發現權杖快過期時,
+  // 全部共用同一次更新的結果,不要各自獨立發起——不然反而可能被 Google 判定成短時間內
+  // 重複觸發、直接跳過,互相打架誰都更新不成功。
+  let pendingTokenRefresh = null;
+  function refreshIdTokenIfNeeded() {
+    if (!isIdTokenExpiringSoon()) return Promise.resolve(true);
+    if (pendingTokenRefresh) return pendingTokenRefresh;
+
+    pendingTokenRefresh = new Promise((resolve) => {
+      const beforeToken = idToken;
+      try {
+        google.accounts.id.prompt(); // 更新結果會透過 handleCredentialResponse 換掉 idToken
+      } catch (err) {
+        console.warn("嘗試背景更新登入權杖時發生錯誤:", err);
+      }
+      // 不等 Google 那個「正式回報結果」的通知(官方文件說可能延遲到 1 分鐘後才收到),
+      // 改成自己設一個短暫的等待時間,時間到了直接檢查權杖有沒有真的換成新的。
+      setTimeout(() => {
+        pendingTokenRefresh = null;
+        resolve(idToken !== beforeToken && !isIdTokenExpiringSoon());
+      }, TOKEN_REFRESH_WAIT_MS);
+    });
+    return pendingTokenRefresh;
+  }
+
+  // 權杖更新失敗時的收尾動作。這裡刻意不判斷「現在是不是在編輯模式」——那個判斷不準
+  // (行程表格卡片切換編輯/預覽狀態時,會被 Quill 誤判成使用者有動作,反而可能造成更新
+  // 這一步本身的風險)。改成只檢查「行程規劃/行程簡介/注意事項」這三個各自的自動存檔
+  // 計時器,是不是真的還在排隊中、還沒真正觸發——只有真的有排隊中的,才提前觸發它去存檔,
+  // 沒有排隊中的完全不動,不會多冒任何不必要的寫入風險。
+  //
+  // 這個時候用的還是「快過期但還沒真的過期」的舊權杖,理論上還能正常使用,所以這裡的存檔
+  // 動作預期會成功。存完之後直接登出、不用彈跳提醒使用者。
+  let isFlushingBeforeSignOut = false;
+  async function flushPendingSavesAndSignOut() {
+    if (isFlushingBeforeSignOut) return; // 避免同時間被觸發好幾次
+    isFlushingBeforeSignOut = true;
+    try {
+      if (autoSaveTimer) {
+        clearTimeout(autoSaveTimer);
+        autoSaveTimer = null;
+        await saveCurrentDayContent(true);
+      }
+      if (typeof tripNotesAutoSaveTimer !== "undefined" && tripNotesAutoSaveTimer) {
+        clearTimeout(tripNotesAutoSaveTimer);
+        tripNotesAutoSaveTimer = null;
+        await saveTripNotes();
+      }
+      if (typeof overviewAutoSaveTimer !== "undefined" && overviewAutoSaveTimer) {
+        clearTimeout(overviewAutoSaveTimer);
+        overviewAutoSaveTimer = null;
+        await saveOverview();
+      }
+    } catch (err) {
+      console.error("權杖更新失敗、登出前強制存檔時發生錯誤:", err);
+    }
+    idToken = null;
+    try { google.accounts.id.disableAutoSelect(); } catch (err) { /* 忽略 */ }
+    location.reload();
+  }
+
   async function apiFetch(path, options = {}) {
+    if (!isFlushingBeforeSignOut && idToken && isIdTokenExpiringSoon()) {
+      const refreshed = await refreshIdTokenIfNeeded();
+      if (!refreshed) {
+        flushPendingSavesAndSignOut(); // 不等待它做完,反正做完就會重新整理頁面
+        throw new Error("登入權杖已過期,即將重新整理頁面");
+      }
+    }
     const headers = options.headers || {};
     if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
     const res = await fetch(`${WORKER_URL}${path}`, { ...options, headers });
@@ -3076,7 +3165,7 @@
 
   async function handleCredentialResponse(response) {
     // 如果「登入畫面」已經被隱藏起來,代表使用者本來就已經是登入狀態——這次呼叫是背景悄悄
-    // 換發新權杖(見下面的 scheduleSilentTokenRefresh),不是使用者剛按下登入按鈕的第一次登入。
+    // 換發新權杖(見上面的 refreshIdTokenIfNeeded),不是使用者剛按下登入按鈕的第一次登入。
     // 這種情況只更新權杖就好,不要重跑一次完整的登入流程,更不能執行到後面的 switchView("trips"),
     // 不然使用者正在編輯到一半的畫面,會無緣無故被強制跳回行程列表,嚇到人。
     const alreadyLoggedIn = document.getElementById("gate").style.display === "none";
@@ -4093,7 +4182,10 @@
     const statusEl = document.getElementById("itinerary-status");
     statusEl.textContent = "編輯中...";
     clearTimeout(autoSaveTimer);
-    autoSaveTimer = setTimeout(() => saveCurrentDayContent(true), 1500);
+    autoSaveTimer = setTimeout(() => {
+      autoSaveTimer = null; // 計時器已經觸發,歸零,代表現在沒有排隊中的存檔了
+      saveCurrentDayContent(true);
+    }, 1500);
   }
 
   let itineraryDayMode = "preview"; // "preview":唯讀,只能看  "edit":可以編輯
@@ -4718,7 +4810,10 @@
   function scheduleTripNotesAutoSave() {
     document.getElementById("trip-notes-status").textContent = "編輯中...";
     clearTimeout(tripNotesAutoSaveTimer);
-    tripNotesAutoSaveTimer = setTimeout(saveTripNotes, 1500);
+    tripNotesAutoSaveTimer = setTimeout(() => {
+      tripNotesAutoSaveTimer = null;
+      saveTripNotes();
+    }, 1500);
   }
 
   // ---- 行程簡介(跟注意事項一起放在「行程說明」底下,存在 trips.overview 這個獨立欄位) ----
@@ -4753,7 +4848,10 @@
   function scheduleOverviewAutoSave() {
     document.getElementById("overview-status").textContent = "編輯中...";
     clearTimeout(overviewAutoSaveTimer);
-    overviewAutoSaveTimer = setTimeout(saveOverview, 1500);
+    overviewAutoSaveTimer = setTimeout(() => {
+      overviewAutoSaveTimer = null;
+      saveOverview();
+    }, 1500);
   }
 
   // 套用目前的預覽/編輯模式:編輯模式才顯示工具列、才能真的打字進去,
