@@ -2836,12 +2836,7 @@
   // 把圖片檔案上傳到 Drive,並插入到目前游標位置(插入圖片按鈕、貼上圖片、拖曳圖片都共用這個)。
   // quill 參數指定要插入到哪一個 Quill 編輯器實體(行程規劃、注意事項各自有自己的編輯器)。
   async function uploadAndInsertItineraryImage(file, index, quill) {
-    const initData = await apiFetch(`/api/trips/${currentTripId}/media/upload-init`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: file.name, mimeType: file.type, size: file.size }),
-    });
-    const driveFile = await uploadWithProgress(initData.uploadUrl, file, file.type, () => {});
+    const driveFile = await uploadFileToTrip("media", currentTripId, file, () => {});
 
     // 這裡不用再另外呼叫「設定公開連結」——查過整個網站,圖片/文件不管在哪裡顯示或下載
     // (行程規劃內文、相簿縮圖、相簿原始檔下載、其他文件下載),全部都是用管理員自己的
@@ -3277,6 +3272,55 @@
 
   // 分段上傳 + 自動重試:把檔案切成一段一段傳,若某一段因網路問題失敗,
   // 會先詢問 Google 目前實際收到多少內容,再從斷點接續,不用整個重傳。
+  // 依照檔案大小,自動選擇「簡單上傳」(小檔案,省一趟網路來回)或「可續傳上傳」(大檔案,
+  // 支援傳輸中斷後接續,不用整個重來)。跟後端的門檻(4MB)保持一致。
+  //
+  // 不管走哪一條路,回傳的資料格式都一樣(id、name、thumbnailLink、webViewLink、
+  // webContentLink 這些欄位都有),呼叫端完全不用管實際是走哪一種上傳方式。
+  //
+  // kind 是 "media" 或 "documents",決定要打哪一組 API 路徑(相簿/文件的資料夾、權限
+  // 判斷不一樣,所以後端分成兩組端點,但前端這裡統一用同一個函式處理)。
+  const SIMPLE_UPLOAD_MAX_SIZE = 4 * 1024 * 1024;
+
+  function uploadSmallFile(kind, tripId, file, onProgress, cancelToken) {
+    const relayUrl = `${WORKER_URL}/api/trips/${tripId}/${kind}/upload-simple`;
+    return new Promise((resolve, reject) => {
+      if (cancelToken && cancelToken.cancelled) { reject(new Error("已取消上傳")); return; }
+      const xhr = new XMLHttpRequest();
+      if (cancelToken) cancelToken.activeXhr = xhr;
+      xhr.open("POST", relayUrl, true);
+      xhr.setRequestHeader("Authorization", `Bearer ${idToken}`);
+      xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+      xhr.setRequestHeader("X-File-Name", encodeURIComponent(file.name));
+      xhr.upload.onprogress = (e) => {
+        if (onProgress && e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try { resolve(JSON.parse(xhr.responseText)); }
+          catch (e) { reject(new Error("回應格式錯誤,無法解析上傳結果")); }
+        } else {
+          reject(new Error(`上傳回應錯誤(${xhr.status}):${xhr.responseText}`));
+        }
+      };
+      xhr.onerror = () => reject(new Error("網路錯誤"));
+      xhr.onabort = () => reject(new Error("已取消上傳"));
+      xhr.send(file);
+    });
+  }
+
+  async function uploadFileToTrip(kind, tripId, file, onProgress, cancelToken) {
+    if (file.size <= SIMPLE_UPLOAD_MAX_SIZE) {
+      return uploadSmallFile(kind, tripId, file, onProgress, cancelToken);
+    }
+    const initData = await apiFetch(`/api/trips/${tripId}/${kind}/upload-init`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: file.name, mimeType: file.type, size: file.size }),
+    });
+    return uploadWithProgress(initData.uploadUrl, file, file.type, onProgress || (() => {}), cancelToken);
+  }
+
   function uploadWithProgress(url, file, mimeType, onProgress, cancelToken) {
     const CHUNK_SIZE = 8 * 1024 * 1024; // 8MB,需為 256KB 的倍數
     const MAX_RETRIES_PER_CHUNK = 5;
@@ -5684,12 +5728,7 @@
       try {
         await retryWholeFileUpload(async () => {
           statusEl.textContent = `處理第 ${i + 1}/${total} 個:${file.name}`;
-          const initData = await apiFetch(`/api/trips/${currentTripId}/media/upload-init`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name: file.name, mimeType: file.type, size: file.size }),
-          });
-          const driveFile = await uploadWithProgress(initData.uploadUrl, file, file.type, (pct) => {
+          const driveFile = await uploadFileToTrip("media", currentTripId, file, (pct) => {
             statusEl.textContent = `處理第 ${i + 1}/${total} 個:${file.name}(${pct}%)`;
           }, currentUploadCancel);
 
@@ -6099,12 +6138,7 @@
       try {
         await retryWholeFileUpload(async () => {
           statusEl.textContent = `處理第 ${i + 1}/${total} 個:${file.name}`;
-          const initData = await apiFetch(`/api/trips/${currentTripId}/documents/upload-init`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name: file.name, mimeType: file.type, size: file.size }),
-          });
-          const driveFile = await uploadWithProgress(initData.uploadUrl, file, file.type, (pct) => {
+          const driveFile = await uploadFileToTrip("documents", currentTripId, file, (pct) => {
             statusEl.textContent = `處理第 ${i + 1}/${total} 個:${file.name}(${pct}%)`;
           });
           await apiFetch(`/api/trips/${currentTripId}/documents`, {
