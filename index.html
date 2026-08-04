@@ -6243,21 +6243,25 @@
   }
 
   async function loadChecklist() {
+    if (!currentTripId) return;
+    // 先把新資料整個抓回來、準備好,再清空畫面重畫——不要一開始就先清空,
+    // 不然等資料回來的這段時間,畫面會出現一段空白的閃爍。
+    const data = await apiFetch(`/api/trips/${currentTripId}/checklist`);
+
     const listBefore = document.getElementById("checklist-list-before");
     const listDuring = document.getElementById("checklist-list-during");
     const emptyBefore = document.getElementById("checklist-empty-before");
     const emptyDuring = document.getElementById("checklist-empty-during");
-    listBefore.innerHTML = "";
-    listDuring.innerHTML = "";
-    if (!currentTripId) return;
 
-    const data = await apiFetch(`/api/trips/${currentTripId}/checklist`);
     const items = data.items || [];
     const beforeItems = items.filter((i) => i.phase !== "during");
     const duringItems = items.filter((i) => i.phase === "during");
 
     emptyBefore.style.display = beforeItems.length === 0 ? "block" : "none";
     emptyDuring.style.display = duringItems.length === 0 ? "block" : "none";
+
+    listBefore.innerHTML = "";
+    listDuring.innerHTML = "";
 
     // 「行李清單」依「隨身行李」「托運行李」分區顯示,隨身行李放上面、托運行李放下面;
     // 沒有標記分類的舊資料(bag_type 是空的)就歸進「托運行李」這一區當作預設值。
