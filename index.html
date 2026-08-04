@@ -5638,6 +5638,32 @@
 
   let currentUploadCancel = null;
 
+  // 整個檔案上傳失敗時的重試邏輯(不是切成一塊一塊傳送那種內部的重試,是「這整個檔案」
+  // 失敗了要不要整個重來)。最多總共嘗試 3 次,每次之間留一點間隔時間再試(間隔隨嘗試次數
+  // 拉長),用來應付網路暫時不穩這種可以靠重試解決的情況;如果 3 次都失敗,才真的放棄這個
+  // 檔案——不會無限重試卡住整批,永久性的失敗(檔案本身有問題、格式不支援之類)試再多次
+  // 也不會成功,放棄之後才能繼續處理下一個檔案。
+  //
+  // 如果使用者按了「取消上傳」,也會直接放棄、不會繼續重試(取消是明確的意圖,不該被當成
+  // 失敗又重試)。
+  async function retryWholeFileUpload(uploadFn, maxAttempts, onRetryStatus) {
+    let lastErr = null;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      if (currentUploadCancel && currentUploadCancel.cancelled) throw new Error("已取消上傳");
+      try {
+        return await uploadFn();
+      } catch (err) {
+        lastErr = err;
+        if (currentUploadCancel && currentUploadCancel.cancelled) throw err;
+        if (attempt < maxAttempts) {
+          if (onRetryStatus) onRetryStatus(attempt, err);
+          await new Promise((r) => setTimeout(r, 1000 * attempt));
+        }
+      }
+    }
+    throw lastErr;
+  }
+
   async function startMediaUpload(files) {
     const statusEl = document.getElementById("media-status");
     const cancelBtn = document.getElementById("media-upload-cancel-btn");
@@ -5647,42 +5673,53 @@
     cancelBtn.style.display = "inline-block";
 
     const total = files.length;
+    const failedFiles = [];
+    let successCount = 0;
     for (let i = 0; i < files.length; i++) {
       if (currentUploadCancel.cancelled) {
         statusEl.textContent = `已取消上傳(已完成 ${i}/${total} 個)`;
         break;
       }
       const file = files[i];
-      statusEl.textContent = `處理第 ${i + 1}/${total} 個:${file.name}`;
       try {
-        const initData = await apiFetch(`/api/trips/${currentTripId}/media/upload-init`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: file.name, mimeType: file.type, size: file.size }),
-        });
-        const driveFile = await uploadWithProgress(initData.uploadUrl, file, file.type, (pct) => {
-          statusEl.textContent = `處理第 ${i + 1}/${total} 個:${file.name}(${pct}%)`;
-        }, currentUploadCancel);
+        await retryWholeFileUpload(async () => {
+          statusEl.textContent = `處理第 ${i + 1}/${total} 個:${file.name}`;
+          const initData = await apiFetch(`/api/trips/${currentTripId}/media/upload-init`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: file.name, mimeType: file.type, size: file.size }),
+          });
+          const driveFile = await uploadWithProgress(initData.uploadUrl, file, file.type, (pct) => {
+            statusEl.textContent = `處理第 ${i + 1}/${total} 個:${file.name}(${pct}%)`;
+          }, currentUploadCancel);
 
-        await apiFetch(`/api/trips/${currentTripId}/media`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            driveFileId: driveFile.id, name: file.name, mimeType: file.type, size: file.size,
-            thumbnailLink: driveFile.thumbnailLink, webViewLink: driveFile.webViewLink, webContentLink: driveFile.webContentLink,
-          }),
+          await apiFetch(`/api/trips/${currentTripId}/media`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              driveFileId: driveFile.id, name: file.name, mimeType: file.type, size: file.size,
+              thumbnailLink: driveFile.thumbnailLink, webViewLink: driveFile.webViewLink, webContentLink: driveFile.webContentLink,
+            }),
+          });
+        }, 3, (attempt) => {
+          statusEl.textContent = `處理第 ${i + 1}/${total} 個:${file.name}(第 ${attempt} 次失敗,準備重試...)`;
         });
-        statusEl.textContent = `完成:${file.name}`;
+        successCount++;
       } catch (err) {
         if (currentUploadCancel.cancelled) {
           statusEl.textContent = `已取消上傳(已完成 ${i}/${total} 個)`;
           break;
         }
-        statusEl.textContent = `上傳失敗(${file.name}):${err.message}`;
+        failedFiles.push(file.name);
       }
     }
     cancelBtn.style.display = "none";
     currentUploadCancel = null;
+    // 全部處理完之後,給一個清楚的總結,不要只停留在「最後一個檔案」的結果——
+    // 不然像是「第 5 個失敗、但第 10 個成功」這種情況,很容易讓人誤以為全部都順利。
+    statusEl.textContent = failedFiles.length === 0
+      ? `全部完成:成功 ${successCount}/${total} 個`
+      : `完成:成功 ${successCount}/${total} 個,失敗 ${failedFiles.length} 個(${failedFiles.join("、")})`;
     loadMedia();
   }
 
@@ -6054,33 +6091,42 @@
     if (files.length === 0) { statusEl.textContent = "請先選擇檔案"; return; }
 
     const total = files.length;
+    const failedFiles = [];
+    let successCount = 0;
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
-      statusEl.textContent = `處理第 ${i + 1}/${total} 個:${file.name}`;
       try {
-        const initData = await apiFetch(`/api/trips/${currentTripId}/documents/upload-init`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: file.name, mimeType: file.type, size: file.size }),
+        await retryWholeFileUpload(async () => {
+          statusEl.textContent = `處理第 ${i + 1}/${total} 個:${file.name}`;
+          const initData = await apiFetch(`/api/trips/${currentTripId}/documents/upload-init`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: file.name, mimeType: file.type, size: file.size }),
+          });
+          const driveFile = await uploadWithProgress(initData.uploadUrl, file, file.type, (pct) => {
+            statusEl.textContent = `處理第 ${i + 1}/${total} 個:${file.name}(${pct}%)`;
+          });
+          await apiFetch(`/api/trips/${currentTripId}/documents`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              driveFileId: driveFile.id, name: file.name, docType,
+              webViewLink: driveFile.webViewLink, webContentLink: driveFile.webContentLink,
+            }),
+          });
+        }, 3, (attempt) => {
+          statusEl.textContent = `處理第 ${i + 1}/${total} 個:${file.name}(第 ${attempt} 次失敗,準備重試...)`;
         });
-        const driveFile = await uploadWithProgress(initData.uploadUrl, file, file.type, (pct) => {
-          statusEl.textContent = `處理第 ${i + 1}/${total} 個:${file.name}(${pct}%)`;
-        });
-        await apiFetch(`/api/trips/${currentTripId}/documents`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            driveFileId: driveFile.id, name: file.name, docType,
-            webViewLink: driveFile.webViewLink, webContentLink: driveFile.webContentLink,
-          }),
-        });
-        statusEl.textContent = `完成:${file.name}`;
+        successCount++;
       } catch (err) {
-        statusEl.textContent = `上傳失敗(${file.name}):${err.message}`;
+        failedFiles.push(file.name);
       }
     }
     input.value = "";
+    statusEl.textContent = failedFiles.length === 0
+      ? `全部完成:成功 ${successCount}/${total} 個`
+      : `完成:成功 ${successCount}/${total} 個,失敗 ${failedFiles.length} 個(${failedFiles.join("、")})`;
     loadDocuments();
   });
 
