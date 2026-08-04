@@ -4287,6 +4287,8 @@
       document.getElementById("flight-info-panel").style.display = "none";
       document.getElementById("accommodation-info-tab-btn").textContent = "⌂ 住宿資訊"; // 離開住宿分頁,重置文字(移除預覽/編輯後綴)
       document.getElementById("accommodation-info-panel").style.display = "none";
+      document.getElementById("itinerary-backup-btn").style.display = ""; // 回到某一天,設定備份/歷史版本這兩個按鈕才有作用,顯示出來
+      document.getElementById("itinerary-history-btn").style.display = "";
       document.getElementById("itinerary-editor-wrap").style.display = "block";
       const content = itineraryDayContents[date] || "";
       if (content && content.includes("<")) {
@@ -4534,6 +4536,8 @@
     document.getElementById("flight-info-tab-btn").classList.add("active");
     document.getElementById("itinerary-editor-wrap").style.display = "none";
     document.getElementById("flight-info-panel").style.display = "block";
+    document.getElementById("itinerary-backup-btn").style.display = "none"; // 航班資訊不屬於任何一天,這兩個按鈕在這裡用不到
+    document.getElementById("itinerary-history-btn").style.display = "none";
     currentItineraryDate = null; // 離開日期分頁,重置記錄,之後點回任何一天都會重新從預覽模式開始
 
     if (wasActive) {
@@ -4713,6 +4717,8 @@
     document.getElementById("accommodation-info-tab-btn").classList.add("active");
     document.getElementById("itinerary-editor-wrap").style.display = "none";
     document.getElementById("accommodation-info-panel").style.display = "block";
+    document.getElementById("itinerary-backup-btn").style.display = "none"; // 住宿資訊不屬於任何一天,這兩個按鈕在這裡用不到
+    document.getElementById("itinerary-history-btn").style.display = "none";
     currentItineraryDate = null; // 離開日期分頁,重置記錄,之後點回任何一天都會重新從預覽模式開始
 
     if (wasActive) {
