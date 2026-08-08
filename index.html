@@ -404,40 +404,7 @@
       content: "\1F3E0"; margin-right: 6px;
       font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
     }
-
-    /* 4. 「行程規劃」這個頁籤,再往下多一層:先看目錄(航班資訊/住宿資訊/每一天),
-       點進去才看詳細內容,做法跟上面「封面 vs 頁籤內容」完全一樣的精神,只是換一層。
-       #trip-sub-itinerary 預設帶 showing-itinerary-index class,代表「現在顯示目錄」;
-       點了目錄裡的項目,JS 會拿掉這個 class,切換成顯示詳細內容 + 「回到目錄」按鈕。 */
-    #trip-sub-itinerary:not(.showing-itinerary-index) #itinerary-mobile-index {
-      display: none !important;
-    }
-    #trip-sub-itinerary.showing-itinerary-index #itinerary-day-tabs,
-    #trip-sub-itinerary.showing-itinerary-index #flight-info-tab-btn,
-    #trip-sub-itinerary.showing-itinerary-index #accommodation-info-tab-btn,
-    #trip-sub-itinerary.showing-itinerary-index #export-word-btn,
-    #trip-sub-itinerary.showing-itinerary-index #itinerary-history-btn,
-    #trip-sub-itinerary.showing-itinerary-index #itinerary-backup-btn,
-    #trip-sub-itinerary.showing-itinerary-index #itinerary-editor-wrap,
-    #trip-sub-itinerary.showing-itinerary-index #flight-info-panel,
-    #trip-sub-itinerary.showing-itinerary-index #accommodation-info-panel,
-    #trip-sub-itinerary.showing-itinerary-index #itinerary-history-panel,
-    #trip-sub-itinerary.showing-itinerary-index .form-actions,
-    #trip-sub-itinerary.showing-itinerary-index #back-to-itinerary-index {
-      display: none !important;
-    }
-    #trip-sub-itinerary:not(.showing-itinerary-index) #back-to-itinerary-index {
-      display: inline-block;
-      font-size: 17px; font-weight: 600; padding: 10px 18px; margin-bottom: 14px;
-      background: var(--bg-soft); border: 1px solid var(--line); border-radius: 20px;
-      color: var(--gold);
-    }
   }
-
-  /* 這兩個 class 只在上面手機版的判斷區塊裡才有作用;電腦版沒有進到那個區塊,
-     所以電腦版一律不會顯示這個索引清單,維持原本「進來就直接看到頁籤內容」的樣子。 */
-  #itinerary-mobile-index { display: none; }
-  #back-to-itinerary-index { display: none; }
 
   .trip-cover-hero {
     border-radius: var(--radius);
@@ -917,28 +884,8 @@
       <button data-sub="documents">其他文件</button>
     </div>
 
-    <div id="trip-sub-itinerary" class="trip-subview showing-itinerary-index">
+    <div id="trip-sub-itinerary" class="trip-subview">
       <div class="panel">
-        <!-- 手機版專用:先顯示這個索引清單(航班資訊/住宿資訊/每一天),點進去之後才顯示
-             詳細內容——跟行程封面「先看目錄、點進去才看內容」是同一種設計精神,用同一組
-             CSS class(trip-cover-item)呈現,外觀自動保持一致。電腦版完全不會看到這個區塊,
-             一律維持原本「進來就直接看到頁籤內容」的樣子。 -->
-        <div id="itinerary-mobile-index" class="trip-cover-index">
-          <button type="button" class="trip-cover-item itinerary-index-item" data-kind="flight">
-            <span class="trip-cover-item-icon">&#9992;&#65039;</span>
-            <span class="trip-cover-item-label">航班資訊</span>
-            <span class="trip-cover-item-arrow">→</span>
-          </button>
-          <button type="button" class="trip-cover-item itinerary-index-item" data-kind="accommodation">
-            <span class="trip-cover-item-icon">&#8962;&#65039;</span>
-            <span class="trip-cover-item-label">住宿資訊</span>
-            <span class="trip-cover-item-arrow">→</span>
-          </button>
-          <div id="itinerary-mobile-index-days"></div>
-        </div>
-
-        <button type="button" id="back-to-itinerary-index" class="ghost">&#127968; 回到行程規劃目錄</button>
-
         <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:6px;">
           <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
             <button type="button" id="flight-info-tab-btn" class="day-tab flight-info-tab">✈ 航班資訊</button>
@@ -3633,9 +3580,7 @@
 
   function renderDayTabs(days) {
     const container = document.getElementById("itinerary-day-tabs");
-    const mobileIndexDays = document.getElementById("itinerary-mobile-index-days");
     container.innerHTML = "";
-    mobileIndexDays.innerHTML = "";
     days.forEach((date, idx) => {
       const btn = document.createElement("button");
       btn.className = "day-tab";
@@ -3646,19 +3591,6 @@
       btn.textContent = baseLabel;
       btn.addEventListener("click", () => switchItineraryDay(date));
       container.appendChild(btn);
-
-      // 手機版目錄清單裡對應的項目,外觀沿用跟行程封面一樣的 trip-cover-item 樣式。
-      // 點下去,除了跟原本的分頁按鈕一樣切換到這一天,還要多做一件事:離開目錄畫面、
-      // 顯示詳細內容(拿掉 showing-itinerary-index 這個 class)。
-      const indexItem = document.createElement("button");
-      indexItem.type = "button";
-      indexItem.className = "trip-cover-item itinerary-index-item";
-      indexItem.innerHTML = `<span class="trip-cover-item-icon">&#128197;</span><span class="trip-cover-item-label">${baseLabel}</span><span class="trip-cover-item-arrow">→</span>`;
-      indexItem.addEventListener("click", () => {
-        document.getElementById("trip-sub-itinerary").classList.remove("showing-itinerary-index");
-        switchItineraryDay(date);
-      });
-      mobileIndexDays.appendChild(indexItem);
     });
   }
 
@@ -4812,21 +4744,6 @@
   }
   document.getElementById("accommodation-info-tab-btn").addEventListener("click", showAccommodationInfoPanel);
 
-  // 手機版目錄清單裡的「航班資訊」「住宿資訊」項目:除了跟原本的分頁按鈕做一樣的事,
-  // 還要多離開目錄畫面、顯示詳細內容。
-  document.querySelector('.itinerary-index-item[data-kind="flight"]').addEventListener("click", () => {
-    document.getElementById("trip-sub-itinerary").classList.remove("showing-itinerary-index");
-    showFlightInfoPanel();
-  });
-  document.querySelector('.itinerary-index-item[data-kind="accommodation"]').addEventListener("click", () => {
-    document.getElementById("trip-sub-itinerary").classList.remove("showing-itinerary-index");
-    showAccommodationInfoPanel();
-  });
-  // 從詳細內容返回目錄(手機版專用,電腦版看不到這個按鈕)
-  document.getElementById("back-to-itinerary-index").addEventListener("click", () => {
-    document.getElementById("trip-sub-itinerary").classList.add("showing-itinerary-index");
-  });
-
   // ---------- 行程詳細 ----------
   document.getElementById("back-to-trips").addEventListener("click", () => switchView("trips"));
 
@@ -5117,11 +5034,6 @@
     // 記錄目前頁面的中文名稱,手機版會拿這個屬性顯示在標題區(取代原本的行程名稱),
     // 桌機版的標題不會用到這個屬性,顯示的還是原本的行程名稱,不受影響。
     document.getElementById("detail-title").dataset.subLabel = TRIP_SUBVIEW_LABELS[name] || "";
-    if (name === "itinerary") {
-      // 每次從封面點進「行程規劃」,一律先看目錄清單,不要停留在上次離開時看的
-      // 那一天/航班/住宿——這樣手機版每次進來的畫面都是一致、可預期的。
-      document.getElementById("trip-sub-itinerary").classList.add("showing-itinerary-index");
-    }
     // 「事項清單」是每個人各自獨立的私人清單(見上面的說明),選到這個分頁時提醒一下這件事,
     // 離開時恢復成原本的名稱,不要一直掛著這個提示。
     const checklistBtn = document.querySelector('#trip-sub-nav button[data-sub="checklist"]');
