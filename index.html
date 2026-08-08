@@ -692,7 +692,7 @@
     background: transparent; border-color: transparent; opacity: 0.85; cursor: default;
   }
   @media (max-width: 560px) {
-    .itinerary-card, .itinerary-card-embed { grid-template-columns: 1fr; padding: 10px 12px; }
+    .itinerary-card, .itinerary-card-embed { grid-template-columns: 1fr; padding: 10px 12px; position: relative; }
     .itinerary-card-left { flex-direction: column; gap: 8px; }
     .itinerary-card-left-row { width: 100%; }
     .itinerary-card-left-row .itinerary-card-icon { font-size: 19px; }
@@ -700,7 +700,17 @@
     .itinerary-card-duration-unit { font-size: 16px !important; }
     .itinerary-card-duration-value { width: 50px !important; font-size: 19px !important; }
     .itinerary-card-right { flex-direction: row; justify-content: flex-end; gap: 8px; }
-    .itinerary-card-move-group, .itinerary-card-nav-group { flex-direction: row; }
+    /* 導航按鈕(➤)改成絕對定位,固定貼在卡片右上角(跟時間欄同一列的高度),
+       不再跟刪除/移動/插入等其他按鈕一起擠在卡片最下面——這些編輯用的按鈕
+       (只有編輯權限的人在編輯模式下才看得到)維持原本排在卡片下方靠右。 */
+    .itinerary-card-nav-group {
+      position: absolute;
+      top: 10px;
+      right: 12px;
+      flex-direction: row;
+      gap: 4px;
+    }
+    .itinerary-card-move-group { flex-direction: row; }
     .itinerary-card-nav-btn { font-size: 30px !important; padding: 8px !important; }
     .itinerary-card-main { margin-top: 6px; gap: 0; }
     .itinerary-card-title { font-size: 26px !important; line-height: 1.35 !important; }
