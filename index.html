@@ -422,6 +422,11 @@
       background: var(--bg-soft); border: 1px solid var(--line); border-radius: 20px;
       color: var(--gold); cursor: pointer;
     }
+    /* 手機版點進內容之後,原本那排頁籤按鈕(航班資訊/住宿資訊/每一天)跟
+       轉成Word檔/歷史版本/設定備份這些操作按鈕通通不需要了——
+       切換不同天/航班/住宿已經改用上面的「回到行程規劃目錄」+ 索引清單處理,
+       這裡不用再重複一次,直接藏起來,只留下「回到目錄」按鈕跟下面的實際內容。 */
+    #trip-sub-itinerary .itinerary-tabbar-row { display: none !important; }
     /* 索引項目的圖示跟文字放大一點,跟封面索引一致,方便長輩看清楚 */
     .itinerary-mobile-index .trip-cover-item { padding: 18px 18px; gap: 18px; }
     .itinerary-mobile-index .trip-cover-item-icon { font-size: 32px; width: 50px; height: 50px; }
@@ -939,7 +944,7 @@
         </div>
 
         <div class="itinerary-tabbar-content">
-        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:6px;">
+        <div class="itinerary-tabbar-row" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:6px;">
           <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
             <button type="button" id="flight-info-tab-btn" class="day-tab flight-info-tab">✈ 航班資訊</button>
             <button type="button" id="accommodation-info-tab-btn" class="day-tab flight-info-tab">⌂ 住宿資訊</button>
