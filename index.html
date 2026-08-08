@@ -2079,6 +2079,12 @@
     // Quill 會自動在編輯區上方插入工具列,這裡取得它並套用深色主題樣式
     const toolbarEl = quillItinerary.getModule("toolbar").container;
     toolbarEl.id = "itinerary-toolbar";
+    // 一建立好就先藏起來(預設模式本來就是「預覽」)——不要等到真的呼叫
+    // applyItineraryDayMode() 才隱藏,不然「剛登入/剛切換到行程規劃」到
+    // 「真正套用預覽模式」中間那段還在等資料載入的時間差,會讓工具列先以
+    // Quill 預設的「顯示」狀態閃一下,看起來像突然出現一排編輯按鈕,
+    // 一下子又消失,造成畫面閃爍、使用者誤以為系統怪怪的。
+    toolbarEl.style.display = "none";
 
     // 修正 Quill 內建限制:清單項目在最外層(縮排 0)時,預設「減少縮排」按鈕會沒有反應。
     // 這裡改寫成:已經在最外層時,「減少縮排」直接把清單格式整個取消,變回一般段落。
@@ -2526,6 +2532,7 @@
 
     const toolbarEl = quillNotes.getModule("toolbar").container;
     toolbarEl.id = "notes-toolbar";
+    toolbarEl.style.display = "none"; // 同上,避免預覽模式套用前先閃一下編輯工具列
 
     // 跟行程規劃用同一套「減少縮排時,最外層先變成整排靠齊,而不是直接沒反應」的修正邏輯
     quillNotes.getModule("toolbar").addHandler("indent", function (value) {
@@ -2628,6 +2635,7 @@
 
     const toolbarEl = quillOverview.getModule("toolbar").container;
     toolbarEl.id = "overview-toolbar";
+    toolbarEl.style.display = "none"; // 同上,避免預覽模式套用前先閃一下編輯工具列
 
     quillOverview.getModule("toolbar").addHandler("indent", function (value) {
       const range = this.quill.getSelection();
