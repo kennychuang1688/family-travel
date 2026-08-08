@@ -406,6 +406,30 @@
     }
   }
 
+  /* ---------- 行程規劃頁籤內的手機版索引(只在手機瀏覽模式顯示,先看目錄:航班資訊/住宿資訊/每一天,
+     點進去之後才顯示對應內容),做法跟上面「行程封面」一模一樣:
+     電腦版一律不出現這個索引、維持原本「頁籤按鈕+內容同時顯示」的樣子;
+     只有螢幕寬度 700px 以下才會有「索引/內容」二選一的切換行為,
+     用 #trip-sub-itinerary 上的 showing-index class 切換,不用另外調整既有的 DOM 結構。 ---------- */
+  .itinerary-mobile-index { display: none; }
+  #itinerary-mobile-back-btn { display: none; } /* 電腦版預設隱藏,只有手機版斷點裡才會顯示出來 */
+  @media (max-width: 700px) {
+    #trip-sub-itinerary.showing-index .itinerary-tabbar-content { display: none !important; }
+    #trip-sub-itinerary.showing-index .itinerary-mobile-index { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
+    #trip-sub-itinerary:not(.showing-index) #itinerary-mobile-back-btn {
+      display: inline-flex; align-items: center; gap: 6px; margin-bottom: 14px;
+      font-size: 15px; font-weight: 600; padding: 8px 16px;
+      background: var(--bg-soft); border: 1px solid var(--line); border-radius: 20px;
+      color: var(--gold); cursor: pointer;
+    }
+    /* 索引項目的圖示跟文字放大一點,跟封面索引一致,方便長輩看清楚 */
+    .itinerary-mobile-index .trip-cover-item { padding: 18px 18px; gap: 18px; }
+    .itinerary-mobile-index .trip-cover-item-icon { font-size: 32px; width: 50px; height: 50px; }
+    .itinerary-mobile-index .trip-cover-item-label { font-size: 20px; }
+    .itinerary-mobile-index .trip-cover-item-arrow { font-size: 20px; }
+    #itinerary-mobile-index-days { display: flex; flex-direction: column; gap: 10px; }
+  }
+
   .trip-cover-hero {
     border-radius: var(--radius);
     padding: 28px 24px 24px;
@@ -886,6 +910,25 @@
 
     <div id="trip-sub-itinerary" class="trip-subview">
       <div class="panel">
+        <button type="button" id="itinerary-mobile-back-btn">&#127968; 回到行程規劃目錄</button>
+
+        <!-- 手機版專用:先顯示這個索引清單(航班資訊/住宿資訊/每一天),點進去之後才顯示對應內容;
+             電腦版完全看不到這個區塊、也不受影響(見上面的 CSS 說明)。 -->
+        <div class="itinerary-mobile-index" id="itinerary-mobile-index">
+          <button type="button" class="trip-cover-item" id="itinerary-index-flight-btn">
+            <span class="trip-cover-item-icon">&#9992;&#65039;</span>
+            <span class="trip-cover-item-label">航班資訊</span>
+            <span class="trip-cover-item-arrow">→</span>
+          </button>
+          <button type="button" class="trip-cover-item" id="itinerary-index-accommodation-btn">
+            <span class="trip-cover-item-icon">&#8962;</span>
+            <span class="trip-cover-item-label">住宿資訊</span>
+            <span class="trip-cover-item-arrow">→</span>
+          </button>
+          <div id="itinerary-mobile-index-days"></div>
+        </div>
+
+        <div class="itinerary-tabbar-content">
         <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:6px;">
           <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
             <button type="button" id="flight-info-tab-btn" class="day-tab flight-info-tab">✈ 航班資訊</button>
@@ -994,6 +1037,7 @@
 
           <div id="accommodation-cards-list" style="margin-top:20px;"></div>
           <div class="empty" id="accommodation-empty" style="display:none;">目前還沒有住宿資訊。</div>
+        </div>
         </div>
       </div>
     </div>
@@ -3589,10 +3633,54 @@
       const baseLabel = `第${idx + 1}天 ${mmdd}`;
       btn.dataset.baseLabel = baseLabel;
       btn.textContent = baseLabel;
-      btn.addEventListener("click", () => switchItineraryDay(date));
+      btn.addEventListener("click", () => {
+        switchItineraryDay(date);
+        leaveItineraryIndex(); // 手機版:點了某一天之後,離開索引畫面、改看內容(電腦版沒有索引畫面,這行不會有任何效果)
+      });
       container.appendChild(btn);
     });
   }
+
+  // 手機版「行程規劃」索引清單裡的每一天項目,樣式跟封面索引一樣(trip-cover-item),
+  // 跟上面 renderDayTabs() 產生的頁籤按鈕分開維護,但共用同一個 date/switchItineraryDay 邏輯。
+  function renderItineraryMobileIndexDays(days) {
+    const container = document.getElementById("itinerary-mobile-index-days");
+    container.innerHTML = "";
+    days.forEach((date, idx) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "trip-cover-item";
+      btn.dataset.date = date;
+      const mmdd = date.slice(5).replace("-", "/");
+      btn.innerHTML =
+        `<span class="trip-cover-item-icon">&#128197;</span>` +
+        `<span class="trip-cover-item-label">第${idx + 1}天 ${mmdd}</span>` +
+        `<span class="trip-cover-item-arrow">→</span>`;
+      btn.addEventListener("click", () => {
+        switchItineraryDay(date);
+        leaveItineraryIndex();
+      });
+      container.appendChild(btn);
+    });
+  }
+
+  // 手機版「行程規劃」索引畫面的進出:比照封面 showing-cover 的做法,
+  // 用 #trip-sub-itinerary 上的 class 切換,電腦版斷點下 CSS 不會產生任何視覺效果。
+  function enterItineraryIndex() {
+    document.getElementById("trip-sub-itinerary").classList.add("showing-index");
+  }
+  function leaveItineraryIndex() {
+    document.getElementById("trip-sub-itinerary").classList.remove("showing-index");
+  }
+  document.getElementById("itinerary-mobile-back-btn").addEventListener("click", enterItineraryIndex);
+  document.getElementById("itinerary-index-flight-btn").addEventListener("click", () => {
+    showFlightInfoPanel();
+    leaveItineraryIndex();
+  });
+  document.getElementById("itinerary-index-accommodation-btn").addEventListener("click", () => {
+    showAccommodationInfoPanel();
+    leaveItineraryIndex();
+  });
 
   // ---------- 行程表格卡片(嵌入在每日行程內文中的結構化景點/交通/美食項目) ----------
   const ITINERARY_CARD_CATEGORIES = ["景點", "交通", "美食", "購物", "住宿", "其它"];
@@ -5098,6 +5186,9 @@
     // (就算這裡誤加了 class,CSS 也只在 700px 以下的畫面寬度才會真的產生任何視覺效果)
     const isMobileViewport = window.matchMedia("(max-width: 700px)").matches;
     document.getElementById("view-trip-detail").classList.toggle("showing-cover", isMobileViewport);
+    // 「行程規劃」頁籤裡的索引畫面(航班資訊/住宿資訊/每一天)也是同樣道理:
+    // 只有手機瀏覽模式才會先看到索引,電腦版完全不受影響、一律直接看到頁籤+內容。
+    document.getElementById("trip-sub-itinerary").classList.toggle("showing-index", isMobileViewport);
     document.getElementById("cover-title").textContent = "載入中...";
     document.getElementById("cover-sub").textContent = "";
     document.getElementById("cover-countdown").textContent = "";
@@ -5127,6 +5218,7 @@
 
     const days = computeDateRange(t.date_start, t.date_end);
     renderDayTabs(days);
+    renderItineraryMobileIndexDays(days);
 
     try {
       await loadAccommodations();
