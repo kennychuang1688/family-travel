@@ -3710,7 +3710,7 @@
         `<span class="trip-cover-item-label">第${idx + 1}天 ${mmdd}</span>` +
         `<span class="trip-cover-item-arrow">→</span>`;
       btn.addEventListener("click", () => {
-        switchItineraryDay(date);
+        switchItineraryDay(date, true); // 手機版索引清單:一律強制先看預覽,不觸發切換編輯模式的 toggle
         leaveItineraryIndex();
       });
       container.appendChild(btn);
@@ -3727,11 +3727,11 @@
   }
   document.getElementById("itinerary-mobile-back-btn").addEventListener("click", enterItineraryIndex);
   document.getElementById("itinerary-index-flight-btn").addEventListener("click", () => {
-    showFlightInfoPanel();
+    showFlightInfoPanel(true); // 手機版索引清單:一律強制先看預覽
     leaveItineraryIndex();
   });
   document.getElementById("itinerary-index-accommodation-btn").addEventListener("click", () => {
-    showAccommodationInfoPanel();
+    showAccommodationInfoPanel(true); // 手機版索引清單:一律強制先看預覽
     leaveItineraryIndex();
   });
 
@@ -4426,7 +4426,7 @@
     });
   }
 
-  function switchItineraryDay(date) {
+  function switchItineraryDay(date, forcePreview = false) {
     const isSameDay = currentItineraryDate === date;
 
     if (!isSameDay) {
@@ -4453,6 +4453,16 @@
       itineraryDayMode = "preview"; // 切到不同的一天,一律先進入預覽模式
       CardStore.reset(); // 先清空,避免切換瞬間短暫顯示上一天的舊卡片
       loadItineraryCards(date); // 載入這一天的行程表格卡片
+    } else if (forcePreview) {
+      // 手機版索引清單點某一天:單純是「進去看內容」的導覽動作,不是「再點一次切換
+      // 編輯/預覽」——就算剛好已經是目前這一天(例如剛進行程時 openTrip 已經預先
+      // 選好第 1 天),也絕對不能因此被誤判成「使用者要切換成編輯模式」。
+      if (itineraryDayMode === "edit") {
+        clearTimeout(autoSaveTimer);
+        saveCurrentDayContent(false);
+        itineraryDayMode = "preview";
+      }
+      // 已經是預覽模式的話,維持預覽,什麼都不用做。
     } else {
       // 已經在看這一天,再點一次同一個分頁,只是切換預覽/編輯模式:
       // 千萬不能重新載入內容(畫面上就是最新的,重新載入反而會蓋掉還沒存檔的修改)
@@ -4675,7 +4685,7 @@
     }
   });
 
-  function showFlightInfoPanel() {
+  function showFlightInfoPanel(forcePreview = false) {
     const wasActive = document.getElementById("flight-info-tab-btn").classList.contains("active");
     document.querySelectorAll(".day-tab").forEach((b) => b.classList.remove("active"));
     // 恢復日期分頁按鈕的文字(移除切到行程分頁時加上的 (預)/(編) 後綴)
@@ -4689,7 +4699,11 @@
     document.getElementById("flight-info-panel").style.display = "block";
     setCurrentItineraryDate(null); // 離開日期分頁,之後點回任何一天都會重新從預覽模式開始
 
-    if (wasActive) {
+    if (forcePreview) {
+      // 手機版索引清單點「航班資訊」:單純是導覽動作,就算剛好已經在這個分頁,
+      // 也不能被誤判成「使用者要切換成編輯模式」。
+      flightPanelMode = "preview";
+    } else if (wasActive) {
       // 已經在航班資訊畫面時再按一次,切換預覽/編輯模式(沒有行程規劃編輯權限的角色,
       // 永遠停留在預覽,跟行程規劃/注意事項用同一套邏輯)
       if (flightPanelMode === "edit") {
@@ -4854,7 +4868,7 @@
     }
   });
 
-  function showAccommodationInfoPanel() {
+  function showAccommodationInfoPanel(forcePreview = false) {
     const wasActive = document.getElementById("accommodation-info-tab-btn").classList.contains("active");
     document.querySelectorAll(".day-tab").forEach((b) => b.classList.remove("active"));
     // 恢復日期分頁按鈕的文字(移除切到行程分頁時加上的 (預)/(編) 後綴)
@@ -4868,7 +4882,11 @@
     document.getElementById("accommodation-info-panel").style.display = "block";
     setCurrentItineraryDate(null); // 離開日期分頁,之後點回任何一天都會重新從預覽模式開始
 
-    if (wasActive) {
+    if (forcePreview) {
+      // 手機版索引清單點「住宿資訊」:單純是導覽動作,就算剛好已經在這個分頁,
+      // 也不能被誤判成「使用者要切換成編輯模式」。
+      accommodationPanelMode = "preview";
+    } else if (wasActive) {
       // 已經在住宿資訊畫面時再按一次,切換預覽/編輯模式(沒有行程規劃編輯權限的角色,
       // 永遠停留在預覽)
       if (accommodationPanelMode === "edit") {
