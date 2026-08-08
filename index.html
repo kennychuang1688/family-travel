@@ -3259,34 +3259,45 @@
         document.getElementById("nav-logs").style.display = "inline-block";
         document.getElementById("nav-users").style.display = "inline-block";
       }
-      // 在 <body> 上加註目前角色對應的 class,讓 CSS 統一決定哪些功能要隱藏——
-      // 比起在一堆按鈕各自的建立邏輯裡插入 if (userRole === ...) 判斷,集中在 CSS
-      // 一個地方管理,以後角色權限有調整時比較不容易漏改。
-      document.body.classList.add(`role-${userRole}`);
-      if (!hasPermission("expensesRead")) document.body.classList.add("no-expenses-access");
-      if (!hasPermission("checklistRead")) document.body.classList.add("no-checklist-access");
-      if (!hasPermission("documentsRead")) document.body.classList.add("no-documents-access");
-      if (!hasPermission("notesRead")) document.body.classList.add("no-notes-access");
-      if (!hasPermission("tripsWrite")) document.body.classList.add("no-trips-write");
-      if (!hasPermission("itineraryWrite")) document.body.classList.add("no-itinerary-write");
-      if (!hasPermission("mediaUpload")) document.body.classList.add("no-media-upload");
-      if (!hasPermission("mediaDelete")) document.body.classList.add("no-media-delete");
-      if (!hasPermission("mediaEdit")) document.body.classList.add("no-media-edit");
-      if (!hasPermission("mediaDownload")) document.body.classList.add("no-media-download");
-      if (!hasPermission("expensesDelete")) document.body.classList.add("no-expenses-delete");
-      if (!hasPermission("expensesWrite")) document.body.classList.add("no-expenses-write");
-      if (!hasPermission("expensesWrite")) {
-        // 匯率設定要「看得到但不能編輯」,不是整個藏起來,所以用 disabled 屬性,不是用 CSS 隱藏
-        ["exchange-rate-currency", "exchange-rate-value", "exchange-rate-save-btn", "exchange-rate-clear-btn"].forEach((id) => {
-          const el = document.getElementById(id);
-          if (el) el.disabled = true;
-        });
-      }
-      if (!hasPermission("checklistDelete")) document.body.classList.add("no-checklist-delete");
-      if (!hasPermission("documentsDelete")) document.body.classList.add("no-documents-delete");
 
-      const payload = JSON.parse(atob(idToken.split(".")[1]));
-      document.getElementById("user-avatar").src = payload.picture || "";
+      // 下面這一大段都是「畫面裝飾用」的角色權限設定(要不要顯示某顆按鈕、頭像圖片等),
+      // 跟「能不能看到旅遊行程列表」無關——真正的權限把關永遠是後端在做。
+      // 特別包一層 try/catch:就算這段裡面因為某些意外情況(例如某個角色少了某個
+      // 對應的 DOM 元素、token payload 格式異常等)噴錯,也絕對不能因此連累到
+      // 下面一定要執行到的 switchView("trips"),不然畫面會卡在「登入完成但整個
+      // 行程列表都是空白」這種很難察覺的狀態,使用者得自己點一次分頁鈕才能救回來。
+      try {
+        // 在 <body> 上加註目前角色對應的 class,讓 CSS 統一決定哪些功能要隱藏——
+        // 比起在一堆按鈕各自的建立邏輯裡插入 if (userRole === ...) 判斷,集中在 CSS
+        // 一個地方管理,以後角色權限有調整時比較不容易漏改。
+        document.body.classList.add(`role-${userRole}`);
+        if (!hasPermission("expensesRead")) document.body.classList.add("no-expenses-access");
+        if (!hasPermission("checklistRead")) document.body.classList.add("no-checklist-access");
+        if (!hasPermission("documentsRead")) document.body.classList.add("no-documents-access");
+        if (!hasPermission("notesRead")) document.body.classList.add("no-notes-access");
+        if (!hasPermission("tripsWrite")) document.body.classList.add("no-trips-write");
+        if (!hasPermission("itineraryWrite")) document.body.classList.add("no-itinerary-write");
+        if (!hasPermission("mediaUpload")) document.body.classList.add("no-media-upload");
+        if (!hasPermission("mediaDelete")) document.body.classList.add("no-media-delete");
+        if (!hasPermission("mediaEdit")) document.body.classList.add("no-media-edit");
+        if (!hasPermission("mediaDownload")) document.body.classList.add("no-media-download");
+        if (!hasPermission("expensesDelete")) document.body.classList.add("no-expenses-delete");
+        if (!hasPermission("expensesWrite")) document.body.classList.add("no-expenses-write");
+        if (!hasPermission("expensesWrite")) {
+          // 匯率設定要「看得到但不能編輯」,不是整個藏起來,所以用 disabled 屬性,不是用 CSS 隱藏
+          ["exchange-rate-currency", "exchange-rate-value", "exchange-rate-save-btn", "exchange-rate-clear-btn"].forEach((id) => {
+            const el = document.getElementById(id);
+            if (el) el.disabled = true;
+          });
+        }
+        if (!hasPermission("checklistDelete")) document.body.classList.add("no-checklist-delete");
+        if (!hasPermission("documentsDelete")) document.body.classList.add("no-documents-delete");
+
+        const payload = JSON.parse(atob(idToken.split(".")[1]));
+        document.getElementById("user-avatar").src = payload.picture || "";
+      } catch (decorErr) {
+        console.error("設定角色相關畫面裝飾時發生錯誤(不影響登入本身):", decorErr);
+      }
 
       switchView("trips");
     } catch (err) {
@@ -3614,11 +3625,37 @@
     }
   }
 
-  async function loadTrips() {
+  async function loadTrips(isRetry = false) {
     // 不做快取:直接送出請求、等真正的資料回來再畫,確保永遠看到跟伺服器同步的最新狀態,
     // 也不會因為「先畫舊資料」這個動作,讓送出網路請求的時間點被拖慢(即使只慢一點點)。
-    const data = await apiFetch("/api/trips");
-    renderTripsTable(data.trips || []);
+    try {
+      const data = await apiFetch("/api/trips");
+      renderTripsTable(data.trips || []);
+    } catch (err) {
+      // 剛登入的第一次請求,偶爾會因為網路狀況或權杖剛換發完成的時間差而失敗一次,
+      // 過去發生這種情況時,畫面會整個空白、什麼提示都沒有,使用者得自己想到要點一次
+      // 分頁按鈕才能重新載入——這裡改成自動悄悄重試一次,大部分情況下使用者根本不會注意到;
+      // 如果重試後還是失敗,才把錯誤訊息明確顯示出來,並提供一顆按鈕方便手動再試一次。
+      if (!isRetry) {
+        setTimeout(() => loadTrips(true), 1000);
+        return;
+      }
+      const tbody = document.getElementById("trips-tbody");
+      const emptyEl = document.getElementById("trips-empty");
+      tbody.innerHTML = "";
+      emptyEl.style.display = "block";
+      emptyEl.textContent = "";
+      const msg = document.createElement("span");
+      msg.textContent = `行程列表載入失敗(${err.message}),`;
+      const retryBtn = document.createElement("button");
+      retryBtn.type = "button";
+      retryBtn.className = "ghost";
+      retryBtn.textContent = "重新載入";
+      retryBtn.addEventListener("click", () => loadTrips());
+      emptyEl.appendChild(msg);
+      emptyEl.appendChild(retryBtn);
+      console.error("載入行程列表失敗:", err);
+    }
   }
 
   function computeDateRange(start, end) {
