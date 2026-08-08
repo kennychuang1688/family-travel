@@ -413,12 +413,24 @@
      只有螢幕寬度 700px 以下才會有「索引/內容」二選一的切換行為,
      用 #trip-sub-itinerary 上的 showing-index class 切換,不用另外調整既有的 DOM 結構。 ---------- */
   .itinerary-mobile-index { display: none; }
-  #itinerary-mobile-back-btn { display: none; } /* 電腦版預設隱藏,只有手機版斷點裡才會顯示出來 */
+  #itinerary-mobile-content-header { display: none; } /* 電腦版預設隱藏,只有手機版斷點裡才會顯示出來 */
+  #itinerary-mobile-mode-toggle-btn {
+    flex: 0 0 auto; font-size: 15px; font-weight: 700; padding: 8px 18px;
+    background: var(--bg-soft); border: 1px solid var(--line); border-radius: 20px;
+    color: var(--ink); cursor: pointer;
+  }
+  #itinerary-mobile-mode-toggle-btn.is-edit { background: var(--gold); border-color: var(--gold); color: #201404; }
+  /* 沒有行程規劃編輯權限的角色(一般會員/VIP):再怎麼按也不會真的進入編輯模式,
+     乾脆連按鈕都不要顯示,免得長輩以為按了會有作用。 */
+  body.no-itinerary-write #itinerary-mobile-mode-toggle-btn { display: none !important; }
   @media (max-width: 700px) {
     #trip-sub-itinerary.showing-index .itinerary-tabbar-content { display: none !important; }
     #trip-sub-itinerary.showing-index .itinerary-mobile-index { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
-    #trip-sub-itinerary:not(.showing-index) #itinerary-mobile-back-btn {
-      display: inline-flex; align-items: center; gap: 6px; margin-bottom: 14px;
+    #trip-sub-itinerary:not(.showing-index) #itinerary-mobile-content-header {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px;
+    }
+    #itinerary-mobile-back-btn {
+      display: inline-flex; align-items: center; gap: 6px;
       font-size: 15px; font-weight: 600; padding: 8px 16px;
       background: var(--bg-soft); border: 1px solid var(--line); border-radius: 20px;
       color: var(--gold); cursor: pointer;
@@ -926,7 +938,12 @@
 
     <div id="trip-sub-itinerary" class="trip-subview">
       <div class="panel">
-        <button type="button" id="itinerary-mobile-back-btn">&#127968; 回到行程規劃目錄</button>
+        <div id="itinerary-mobile-content-header">
+          <button type="button" id="itinerary-mobile-back-btn">&#127968; 回到行程規劃目錄</button>
+          <!-- 手機版專用:預覽/編輯切換鈕,效果等同電腦版「點同一個分頁兩次」——
+               沒有行程規劃編輯權限的角色(一般會員/VIP)看不到這顆按鈕(見下面 CSS)。 -->
+          <button type="button" id="itinerary-mobile-mode-toggle-btn" title="切換預覽/編輯模式">預</button>
+        </div>
 
         <!-- 手機版專用:先顯示這個索引清單(航班資訊/住宿資訊/每一天),點進去之後才顯示對應內容;
              電腦版完全看不到這個區塊、也不受影響(見上面的 CSS 說明)。 -->
@@ -4389,6 +4406,37 @@
 
   let itineraryDayMode = "preview"; // "preview":唯讀,只能看  "edit":可以編輯
 
+  // ---------- 手機版:行程規劃內容畫面的「預/編」切換鈕 ----------
+  // 效果等同電腦版「同一個分頁按兩次」的切換邏輯,只是手機版把它獨立成一顆隨時看得到的按鈕,
+  // 不用像電腦版那樣特地跑去分頁列點兩下。三種內容(某一天/航班資訊/住宿資訊)共用同一顆按鈕,
+  // 每次任何一個 apply*Mode() 函式執行完之後都會呼叫這裡,依「目前畫面上顯示的是哪一種內容」
+  // 來判斷要顯示「預」還是「編」。
+  function updateItineraryMobileModeToggle() {
+    const btn = document.getElementById("itinerary-mobile-mode-toggle-btn");
+    if (!btn) return;
+    let isEdit = false;
+    if (document.getElementById("itinerary-editor-wrap").style.display !== "none") {
+      isEdit = itineraryDayMode === "edit";
+    } else if (document.getElementById("flight-info-panel").style.display !== "none") {
+      isEdit = flightPanelMode === "edit";
+    } else if (document.getElementById("accommodation-info-panel").style.display !== "none") {
+      isEdit = accommodationPanelMode === "edit";
+    }
+    btn.textContent = isEdit ? "編" : "預";
+    btn.classList.toggle("is-edit", isEdit);
+  }
+  document.getElementById("itinerary-mobile-mode-toggle-btn").addEventListener("click", () => {
+    // 依目前畫面顯示的是哪一種內容,呼叫對應「切換預覽/編輯」的既有函式——
+    // 不帶 forcePreview 參數,才會真的觸發切換(跟桌面版點兩次分頁是同一套邏輯)。
+    if (document.getElementById("itinerary-editor-wrap").style.display !== "none") {
+      if (currentItineraryDate) switchItineraryDay(currentItineraryDate);
+    } else if (document.getElementById("flight-info-panel").style.display !== "none") {
+      showFlightInfoPanel();
+    } else if (document.getElementById("accommodation-info-panel").style.display !== "none") {
+      showAccommodationInfoPanel();
+    }
+  });
+
   function applyItineraryDayMode() {
     const toolbarEl = document.getElementById("itinerary-toolbar");
     const isEdit = itineraryDayMode === "edit";
@@ -4424,6 +4472,7 @@
         b.textContent = base;
       }
     });
+    updateItineraryMobileModeToggle();
   }
 
   function switchItineraryDay(date, forcePreview = false) {
@@ -4493,6 +4542,7 @@
     document.getElementById("flight-form-area").style.display = flightPanelMode === "edit" ? "block" : "none";
     document.getElementById("flight-info-tab-btn").textContent =
       flightPanelMode === "edit" ? "✈ 航班資訊(編)" : "✈ 航班資訊(預)";
+    updateItineraryMobileModeToggle();
   }
 
   const FLIGHT_FORM_FIELDS = [
@@ -4729,6 +4779,7 @@
     document.getElementById("accommodation-form-area").style.display = accommodationPanelMode === "edit" ? "block" : "none";
     document.getElementById("accommodation-info-tab-btn").textContent =
       accommodationPanelMode === "edit" ? "⌂ 住宿資訊(編)" : "⌂ 住宿資訊(預)";
+    updateItineraryMobileModeToggle();
   }
 
   const ACCOMMODATION_FORM_FIELDS = [
