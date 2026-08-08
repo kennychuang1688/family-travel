@@ -76,6 +76,7 @@
   body.no-notes-access #overview-inner-notes {
     display: none !important;
   }
+  body.no-trips-write #add-trip-panel,
   body.no-trips-write #toggle-new-trip,
   body.no-trips-write #new-trip-form,
   body.no-trips-write .trip-row-actions-write {
@@ -825,7 +826,7 @@
 
   <!-- 旅遊行程 列表 -->
   <div id="view-trips" class="view">
-    <div class="panel">
+    <div class="panel" id="add-trip-panel">
       <h2>
         新增行程
         <button class="ghost" id="toggle-new-trip">+ 新增</button>
