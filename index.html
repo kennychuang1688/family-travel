@@ -310,6 +310,23 @@
     font-size: 13px; margin: 0 0 10px; padding-left: 10px; border-left: 3px solid var(--gold);
   }
 
+  /* 「隨身行李」「托運行李」各自獨立的整理進度條:勾選/取消勾選會即時更新,
+     全部勾完時整條變成綠色,給一個「整理完成了」的明確回饋。 */
+  .checklist-progress-bar { display: flex; align-items: center; gap: 10px; margin: 0 0 14px; }
+  .checklist-progress-track {
+    flex: 1; height: 10px; border-radius: 6px; background: var(--line); overflow: hidden;
+  }
+  .checklist-progress-fill {
+    height: 100%; width: 0%; border-radius: 6px; background: var(--gold);
+    transition: width 0.25s ease, background 0.25s ease;
+  }
+  .checklist-progress-bar.all-done .checklist-progress-fill { background: #4a9d5f; }
+  .checklist-progress-text {
+    flex: none; font-size: 12px; font-weight: 600; color: rgba(59,42,33,0.65);
+    font-family: "Iansui", "Noto Sans TC", sans-serif; white-space: nowrap;
+  }
+  .checklist-progress-bar.all-done .checklist-progress-text { color: #4a9d5f; }
+
   /* 行李清單、旅遊期間都用同一套卡片式格線呈現,每一列放 4 筆(桌機),
      螢幕較窄時逐步收成 3 欄、2 欄、1 欄 */
   .checklist-item-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 16px; }
@@ -321,6 +338,8 @@
   }
   @media (max-width: 500px) {
     .checklist-item-grid { grid-template-columns: 1fr; }
+    .checklist-progress-track { height: 14px; }
+    .checklist-progress-text { font-size: 15px; }
   }
   .checklist-item-card {
     display: flex; align-items: center; gap: 8px; padding: 8px 10px;
@@ -423,6 +442,7 @@
   /* 沒有行程規劃編輯權限的角色(一般會員/VIP):再怎麼按也不會真的進入編輯模式,
      乾脆連按鈕都不要顯示,免得長輩以為按了會有作用。 */
   body.no-itinerary-write #itinerary-mobile-mode-toggle-btn { display: none !important; }
+  #itinerary-mobile-back-btn-bottom { display: none; } /* 電腦版預設隱藏 */
   @media (max-width: 700px) {
     #trip-sub-itinerary.showing-index .itinerary-tabbar-content { display: none !important; }
     #trip-sub-itinerary.showing-index .itinerary-mobile-index { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
@@ -434,6 +454,12 @@
       font-size: 15px; font-weight: 600; padding: 8px 16px;
       background: var(--bg-soft); border: 1px solid var(--line); border-radius: 20px;
       color: var(--gold); cursor: pointer;
+    }
+    #trip-sub-itinerary:not(.showing-index) #itinerary-mobile-back-btn-bottom {
+      display: inline-flex; align-items: center; gap: 6px; margin-top: 20px;
+      font-size: 15px; font-weight: 600; padding: 10px 18px;
+      background: var(--bg-soft); border: 1px solid var(--line); border-radius: 20px;
+      color: var(--gold); cursor: pointer; width: 100%; justify-content: center;
     }
     /* 手機版點進內容之後,原本那排頁籤按鈕(航班資訊/住宿資訊/每一天)跟
        轉成Word檔/歷史版本/設定備份這些操作按鈕通通不需要了——
@@ -457,7 +483,7 @@
     box-shadow: 0 6px 18px rgba(209, 103, 63, 0.25);
   }
   .trip-cover-title {
-    font-family: Georgia, "Noto Serif TC", serif; font-size: 28px; font-weight: 700;
+    font-family: "Iansui", "Noto Sans TC", sans-serif; font-size: 28px; font-weight: 700;
     margin-bottom: 6px; line-height: 1.3;
   }
   .trip-cover-sub { font-size: 14px; opacity: 0.92; margin-bottom: 14px; }
@@ -519,6 +545,12 @@
   @media (max-width: 560px) {
     .trip-cover-hero { padding: 22px 18px 18px; }
     .trip-cover-title { font-size: 24px; }
+    /* 長輩用手機瀏覽時,封面這排項目(行程說明/行程規劃/照片影片...)的圖示跟文字
+       再放大一點,方便看清楚、點得準 */
+    .trip-cover-item { padding: 18px 18px; gap: 18px; }
+    .trip-cover-item-icon { font-size: 32px; width: 50px; height: 50px; }
+    .trip-cover-item-label { font-size: 20px; }
+    .trip-cover-item-arrow { font-size: 20px; }
   }
 
   /* Quill 富文本編輯器 - 深色主題覆寫 */
@@ -638,6 +670,13 @@
   @media (max-width: 560px) {
     .flight-card { padding-right: 16px; }
     .flight-card-actions { position: static; margin-top: 10px; justify-content: flex-end; }
+    /* 長輩用手機瀏覽時,航班卡片裡的時間、機場代碼、航廈等資訊再放大一點 */
+    .flight-card-header { font-size: 16px; }
+    .flight-endpoint .flight-code { font-size: 30px; }
+    .flight-endpoint .flight-time { font-size: 22px; margin-top: 4px; }
+    .flight-endpoint .flight-place { font-size: 16px; margin-top: 4px; }
+    .flight-arrow { font-size: 26px; }
+    .flight-notes { font-size: 15px; }
   }
   .accommodation-card-body { font-size: 13px; line-height: 1.9; }
   .accommodation-card-body .arow-label { color: rgba(59,42,33,0.55); margin-right: 6px; }
@@ -939,7 +978,7 @@
     <div id="trip-sub-itinerary" class="trip-subview">
       <div class="panel">
         <div id="itinerary-mobile-content-header">
-          <button type="button" id="itinerary-mobile-back-btn">&#127968; 回到行程規劃目錄</button>
+          <button type="button" id="itinerary-mobile-back-btn">&#127968; 返回行程規劃</button>
           <!-- 手機版專用:預覽/編輯切換鈕,效果等同電腦版「點同一個分頁兩次」——
                沒有行程規劃編輯權限的角色(一般會員/VIP)看不到這顆按鈕(見下面 CSS)。 -->
           <button type="button" id="itinerary-mobile-mode-toggle-btn" title="切換預覽/編輯模式">預</button>
@@ -1072,6 +1111,12 @@
           <div class="empty" id="accommodation-empty" style="display:none;">目前還沒有住宿資訊。</div>
         </div>
         </div>
+
+        <!-- 手機版專用:內容看完、滑到最下面之後,不用再滑回最上面才能回目錄——
+             故意放在 itinerary-tabbar-content 外面(不管目前顯示的是哪一種內容都在它下面),
+             圖示故意跟上面「返回行程規劃」「回到封面」用的房子圖示不一樣,
+             這樣同一個畫面上不會一次出現三個一模一樣的房子圖示。 -->
+        <button type="button" id="itinerary-mobile-back-btn-bottom">&#11014;&#65039; 返回行程規劃</button>
       </div>
     </div>
 
@@ -3751,6 +3796,12 @@
     document.getElementById("trip-sub-itinerary").classList.remove("showing-index");
   }
   document.getElementById("itinerary-mobile-back-btn").addEventListener("click", enterItineraryIndex);
+  document.getElementById("itinerary-mobile-back-btn-bottom").addEventListener("click", () => {
+    enterItineraryIndex();
+    // 從內容最下面點的,順便把畫面捲回最上面,不然使用者會看到「索引清單」但視窗還停留在
+    // 原本捲動很下面的位置,索引清單反而看不到
+    document.getElementById("trip-sub-itinerary").scrollIntoView({ behavior: "smooth", block: "start" });
+  });
   document.getElementById("itinerary-index-flight-btn").addEventListener("click", () => {
     showFlightInfoPanel(true); // 手機版索引清單:一律強制先看預覽
     leaveItineraryIndex();
@@ -6401,7 +6452,7 @@
   // ---------- 待辦事項 ----------
   // 「行李清單」「旅遊期間」現在都用同一套卡片式格線呈現(每列 4 個),
   // 差別只在於「行李清單」的項目還會依托運/隨身分成兩個 Layer 2 區塊,「旅遊期間」沒有這層分類。
-  function renderChecklistRow(item) {
+  function renderChecklistRow(item, progressKey) {
     const row = document.createElement("div");
     row.className = "checklist-item-card" + (item.done ? " done" : "");
     row.dataset.id = item.id;
@@ -6411,6 +6462,7 @@
     checkbox.checked = !!item.done;
     checkbox.addEventListener("change", async () => {
       row.classList.toggle("done", checkbox.checked);
+      updateChecklistProgress(progressKey); // 先用畫面上的勾選狀態立即更新進度條,不用等後端回應
       try {
         await apiFetch(`/api/checklist/${item.id}`, {
           method: "PUT",
@@ -6420,6 +6472,7 @@
       } catch (err) {
         checkbox.checked = !checkbox.checked;
         row.classList.toggle("done", checkbox.checked);
+        updateChecklistProgress(progressKey); // 存檔失敗要把畫面改回去,進度條也要跟著復原
         alert("更新失敗:" + err.message);
       }
     });
@@ -6458,7 +6511,9 @@
   }
 
   // 在 container 裡加上一個 Layer 2 分區(淺色底的巢狀區塊):如果這一區沒有項目就整個跳過不顯示。
-  function renderChecklistGroup(container, label, items) {
+  // progressKey 有值時,標題底下會多一條「整理進度」進度條(勾了幾項/總共幾項),
+  // 目前只有「隨身行李」「托運行李」這兩個分區會用到;「旅遊期間」不需要,不傳就好。
+  function renderChecklistGroup(container, label, items, progressKey) {
     if (items.length === 0) return;
     const group = document.createElement("div");
     group.className = "checklist-layer2-group";
@@ -6468,12 +6523,39 @@
     heading.textContent = label;
     group.appendChild(heading);
 
+    if (progressKey) {
+      const progress = document.createElement("div");
+      progress.className = "checklist-progress-bar";
+      progress.id = `checklist-progress-${progressKey}`;
+      progress.innerHTML =
+        `<div class="checklist-progress-track"><div class="checklist-progress-fill"></div></div>` +
+        `<span class="checklist-progress-text"></span>`;
+      group.appendChild(progress);
+    }
+
     const grid = document.createElement("div");
     grid.className = "checklist-item-grid";
-    for (const item of items) grid.appendChild(renderChecklistRow(item));
+    for (const item of items) grid.appendChild(renderChecklistRow(item, progressKey));
     group.appendChild(grid);
 
     container.appendChild(group);
+    if (progressKey) updateChecklistProgress(progressKey); // 剛畫出來,先算一次目前的進度
+  }
+
+  // 依畫面上目前的勾選狀態,重新計算並更新某個分區的整理進度條(勾選/取消/新增/刪除項目後都要呼叫)
+  function updateChecklistProgress(progressKey) {
+    if (!progressKey) return;
+    const bar = document.getElementById(`checklist-progress-${progressKey}`);
+    if (!bar) return;
+    const grid = bar.nextElementSibling;
+    if (!grid) return;
+    const cards = grid.querySelectorAll(".checklist-item-card");
+    const total = cards.length;
+    const done = grid.querySelectorAll(".checklist-item-card.done").length;
+    const pct = total === 0 ? 0 : Math.round((done / total) * 100);
+    bar.querySelector(".checklist-progress-fill").style.width = pct + "%";
+    bar.querySelector(".checklist-progress-text").textContent = `整理進度 ${done} / ${total}`;
+    bar.classList.toggle("all-done", total > 0 && done === total);
   }
 
   async function loadChecklist() {
@@ -6501,8 +6583,8 @@
     // 沒有標記分類的舊資料(bag_type 是空的)就歸進「托運行李」這一區當作預設值。
     const carryOnItems = beforeItems.filter((i) => i.bag_type === "隨身行李");
     const checkedItems = beforeItems.filter((i) => i.bag_type !== "隨身行李");
-    renderChecklistGroup(listBefore, "隨身行李", carryOnItems);
-    renderChecklistGroup(listBefore, "托運行李", checkedItems);
+    renderChecklistGroup(listBefore, "隨身行李", carryOnItems, "carryon");
+    renderChecklistGroup(listBefore, "托運行李", checkedItems, "checked");
 
     for (const item of duringItems) listDuring.appendChild(renderChecklistRow(item));
   }
