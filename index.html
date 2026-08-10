@@ -182,6 +182,12 @@
      header 底下的燈箱等彈窗都是 position:fixed,不受這個排序影響。 */
   @media (max-width: 700px) {
     body { display: flex; flex-direction: column; }
+    /* 重要修正:body 改成 flex 版面之後,main 原本靠 margin:0 auto 置中撐滿寬度的做法
+       在 flex 子項目身上會失效——auto margin 在 flex 版面下變成「置中並收縮成內容寬度」,
+       導致 main 整個變窄、兩側留下大片空白(這正是行程規劃索引清單「兩邊黃色畫面太多」的
+       真正原因,不是卡片樣式本身的問題)。手機版寬度本來就用不到 max-width:1100px 這個上限,
+       這裡直接讓 main 撐滿寬度、拿掉自動置中的邊界即可。 */
+    main { width: 100%; margin: 0; }
     header {
       order: 2; border-bottom: none; border-top: 1px solid var(--line);
       flex-direction: column; align-items: center; text-align: center;
@@ -410,15 +416,14 @@
       display: none !important;
     }
 
-    /* 1. 封面索引項目改成置中版面、拿掉箭頭,圖示文字再放大——
-       跟下面 560px 那個區塊是同一套設計,寫兩次是因為歷史上分兩個區塊維護,
-       這裡沿用同樣的規則,確保 560px~700px 這段寬度也是一樣的樣子。 */
+    /* 1. 封面索引項目:圖示在左、文字在右,放在同一條水平線上,拿掉箭頭
+       (跟下面 560px 那個區塊是同一套設計,寫兩次是因為歷史上分兩個區塊維護)。 */
     .trip-cover-item {
-      flex-direction: column; justify-content: center; text-align: center;
-      padding: 22px 16px; gap: 10px;
+      flex-direction: row; justify-content: flex-start; text-align: left;
+      padding: 16px 18px; gap: 16px;
     }
-    .trip-cover-item-icon { font-size: 40px; width: 64px; height: 64px; }
-    .trip-cover-item-label { font-size: 22px; flex: none; }
+    .trip-cover-item-icon { font-size: 30px; width: 52px; height: 52px; flex: none; }
+    .trip-cover-item-label { font-size: 20px; flex: 1; }
     .trip-cover-item-arrow { display: none; }
 
     /* 2. 進入頁籤內容後,原本「行程名稱」跟「日期區間」這兩行直接不顯示——
@@ -492,34 +497,37 @@
        切換不同天/航班/住宿已經改用上面的「回到行程規劃目錄」+ 索引清單處理,
        這裡不用再重複一次,直接藏起來,只留下「回到目錄」按鈕跟下面的實際內容。 */
     #trip-sub-itinerary .itinerary-tabbar-row { display: none !important; }
-    /* 索引項目改成置中版面、拿掉箭頭,圖示文字再放大,跟封面索引用同一套設計 */
+    /* 索引項目改成橫向排列(圖示在左、文字在右,同一水平線),拿掉箭頭,跟封面索引用同一套設計。
+       另外用負邊界把 .panel 本身的內距抵銷掉,讓這排卡片跟封面頁的卡片一樣延伸到接近螢幕邊緣、
+       兩側不會多一圈米黃色的留白(封面頁的清單沒有包在 .panel 裡面,這裡额外用負邊界補回同樣寬度)。 */
+    .itinerary-mobile-index { margin: 0 -22px; }
     .itinerary-mobile-index .trip-cover-item {
-      flex-direction: column; justify-content: center; text-align: center;
-      padding: 22px 16px; gap: 10px;
+      flex-direction: row; justify-content: flex-start; text-align: left;
+      padding: 16px 18px; gap: 16px;
     }
-    .itinerary-mobile-index .trip-cover-item-icon { font-size: 40px; width: 64px; height: 64px; }
-    .itinerary-mobile-index .trip-cover-item-label { font-size: 22px; flex: none; }
+    .itinerary-mobile-index .trip-cover-item-icon { font-size: 30px; width: 52px; height: 52px; flex: none; }
+    .itinerary-mobile-index .trip-cover-item-label { font-size: 20px; flex: 1; }
     .itinerary-mobile-index .trip-cover-item-arrow { display: none; }
     #itinerary-mobile-index-days { display: flex; flex-direction: column; gap: 10px; }
 
     /* 自訂的「第 X 天」小行事曆徽章:紅色月份 + 白底日期數字,取代固定顯示 JUL 17 的
        行事曆 emoji(見上面 buildDayIconHtml() 的說明)。要蓋掉 .trip-cover-item-icon
        原本的圓形底色/置中 emoji 樣式,所以每個屬性都重新指定一次;寬度固定跟其他
-       圖示一樣是 64px,這樣整排項目置中對齊時,徽章也會跟其他圖示一樣置中。 */
+       圖示一樣是 52px,配合橫向排列靠左對齊。 */
     .itinerary-mobile-index .trip-cover-item-icon.itinerary-day-icon {
-      background: #fff; border: 1px solid var(--line); border-radius: 10px;
+      background: #fff; border: 1px solid var(--line); border-radius: 8px;
       display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start;
       overflow: hidden; padding: 0; box-shadow: 0 1px 2px rgba(0,0,0,0.08);
-      width: 64px; height: 64px;
+      width: 52px; height: 52px;
     }
     .itinerary-day-icon-month {
       display: block; background: #d9483c; color: #fff;
-      font-size: 13px; font-weight: 700; letter-spacing: 0.5px; text-align: center;
-      padding: 4px 0; font-family: Arial, Helvetica, sans-serif;
+      font-size: 10px; font-weight: 700; letter-spacing: 0.5px; text-align: center;
+      padding: 3px 0; font-family: Arial, Helvetica, sans-serif;
     }
     .itinerary-day-icon-num {
       display: block; flex: 1; text-align: center; color: #3b2a21;
-      font-size: 24px; font-weight: 700; font-family: Arial, Helvetica, sans-serif;
+      font-size: 18px; font-weight: 700; font-family: Arial, Helvetica, sans-serif;
       display: flex; align-items: center; justify-content: center;
     }
   }
@@ -595,15 +603,15 @@
   @media (max-width: 560px) {
     .trip-cover-hero { padding: 22px 18px 18px; }
     .trip-cover-title { font-size: 24px; }
-    /* 長輩用手機瀏覽時,封面這排項目(行程說明/行程規劃/照片影片...)改成置中版面:
-       圖示放在文字上方、整塊置中,拿掉右邊的箭頭符號(手機上本來就是整排都能點,
-       箭頭反而是多餘的視覺雜訊),圖示跟文字都再放大一點,更符合手機操作習慣。 */
+    /* 長輩用手機瀏覽時,封面這排項目(行程說明/行程規劃/照片影片...):
+       圖示在左、文字在右,放在同一條水平線上,拿掉右邊的箭頭符號(手機上本來就是
+       整排都能點,箭頭反而是多餘的視覺雜訊),圖示跟文字都放大一點,更符合手機操作習慣。 */
     .trip-cover-item {
-      flex-direction: column; justify-content: center; text-align: center;
-      padding: 22px 16px; gap: 10px;
+      flex-direction: row; justify-content: flex-start; text-align: left;
+      padding: 16px 18px; gap: 16px;
     }
-    .trip-cover-item-icon { font-size: 40px; width: 64px; height: 64px; }
-    .trip-cover-item-label { font-size: 22px; flex: none; }
+    .trip-cover-item-icon { font-size: 30px; width: 52px; height: 52px; flex: none; }
+    .trip-cover-item-label { font-size: 20px; flex: 1; }
     .trip-cover-item-arrow { display: none; }
   }
 
@@ -892,6 +900,9 @@
     .brand .mark { font-size: 20px; }
     main { padding: 16px 12px 60px; }
     .panel { padding: 14px; border-radius: 14px; margin-bottom: 16px; }
+    /* 這個斷點下 .panel 的內距變成 14px(上面那行),所以負邊界也要跟著改成 -14px,
+       行程規劃索引清單的卡片才會一樣延伸到接近螢幕邊緣,不會多留一圈空白。 */
+    .itinerary-mobile-index { margin: 0 -14px; }
     nav { gap: 4px; flex-wrap: wrap; }
     nav button { padding: 7px 12px; font-size: 12px; }
     #user-box span { display: none; } /* 手機版空間有限,只留頭像和登出鈕,姓名文字先隱藏 */
