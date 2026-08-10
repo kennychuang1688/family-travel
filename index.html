@@ -396,11 +396,16 @@
       display: none !important;
     }
 
-    /* 1. 封面索引項目的圖示跟文字放大一點,方便長輩看清楚 */
-    .trip-cover-item { padding: 18px 18px; gap: 18px; }
-    .trip-cover-item-icon { font-size: 32px; width: 50px; height: 50px; }
-    .trip-cover-item-label { font-size: 20px; }
-    .trip-cover-item-arrow { font-size: 20px; }
+    /* 1. 封面索引項目改成置中版面、拿掉箭頭,圖示文字再放大——
+       跟下面 560px 那個區塊是同一套設計,寫兩次是因為歷史上分兩個區塊維護,
+       這裡沿用同樣的規則,確保 560px~700px 這段寬度也是一樣的樣子。 */
+    .trip-cover-item {
+      flex-direction: column; justify-content: center; text-align: center;
+      padding: 22px 16px; gap: 10px;
+    }
+    .trip-cover-item-icon { font-size: 40px; width: 64px; height: 64px; }
+    .trip-cover-item-label { font-size: 22px; flex: none; }
+    .trip-cover-item-arrow { display: none; }
 
     /* 2. 進入頁籤內容後,原本「行程名稱」跟「日期區間」這兩行直接不顯示——
        行程名稱、日期在封面就已經看過了,這裡再看到反而是多餘的重複資訊,
@@ -473,29 +478,34 @@
        切換不同天/航班/住宿已經改用上面的「回到行程規劃目錄」+ 索引清單處理,
        這裡不用再重複一次,直接藏起來,只留下「回到目錄」按鈕跟下面的實際內容。 */
     #trip-sub-itinerary .itinerary-tabbar-row { display: none !important; }
-    /* 索引項目的圖示跟文字放大一點,跟封面索引一致,方便長輩看清楚 */
-    .itinerary-mobile-index .trip-cover-item { padding: 18px 18px; gap: 18px; }
-    .itinerary-mobile-index .trip-cover-item-icon { font-size: 32px; width: 50px; height: 50px; }
-    .itinerary-mobile-index .trip-cover-item-label { font-size: 20px; }
-    .itinerary-mobile-index .trip-cover-item-arrow { font-size: 20px; }
+    /* 索引項目改成置中版面、拿掉箭頭,圖示文字再放大,跟封面索引用同一套設計 */
+    .itinerary-mobile-index .trip-cover-item {
+      flex-direction: column; justify-content: center; text-align: center;
+      padding: 22px 16px; gap: 10px;
+    }
+    .itinerary-mobile-index .trip-cover-item-icon { font-size: 40px; width: 64px; height: 64px; }
+    .itinerary-mobile-index .trip-cover-item-label { font-size: 22px; flex: none; }
+    .itinerary-mobile-index .trip-cover-item-arrow { display: none; }
     #itinerary-mobile-index-days { display: flex; flex-direction: column; gap: 10px; }
 
     /* 自訂的「第 X 天」小行事曆徽章:紅色月份 + 白底日期數字,取代固定顯示 JUL 17 的
        行事曆 emoji(見上面 buildDayIconHtml() 的說明)。要蓋掉 .trip-cover-item-icon
-       原本的圓形底色/置中 emoji 樣式,所以每個屬性都重新指定一次。 */
+       原本的圓形底色/置中 emoji 樣式,所以每個屬性都重新指定一次;寬度固定跟其他
+       圖示一樣是 64px,這樣整排項目置中對齊時,徽章也會跟其他圖示一樣置中。 */
     .itinerary-mobile-index .trip-cover-item-icon.itinerary-day-icon {
       background: #fff; border: 1px solid var(--line); border-radius: 10px;
       display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start;
       overflow: hidden; padding: 0; box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+      width: 64px; height: 64px;
     }
     .itinerary-day-icon-month {
       display: block; background: #d9483c; color: #fff;
-      font-size: 11px; font-weight: 700; letter-spacing: 0.5px; text-align: center;
-      padding: 3px 0; font-family: Arial, Helvetica, sans-serif;
+      font-size: 13px; font-weight: 700; letter-spacing: 0.5px; text-align: center;
+      padding: 4px 0; font-family: Arial, Helvetica, sans-serif;
     }
     .itinerary-day-icon-num {
       display: block; flex: 1; text-align: center; color: #3b2a21;
-      font-size: 19px; font-weight: 700; font-family: Arial, Helvetica, sans-serif;
+      font-size: 24px; font-weight: 700; font-family: Arial, Helvetica, sans-serif;
       display: flex; align-items: center; justify-content: center;
     }
   }
@@ -571,12 +581,16 @@
   @media (max-width: 560px) {
     .trip-cover-hero { padding: 22px 18px 18px; }
     .trip-cover-title { font-size: 24px; }
-    /* 長輩用手機瀏覽時,封面這排項目(行程說明/行程規劃/照片影片...)的圖示跟文字
-       再放大一點,方便看清楚、點得準 */
-    .trip-cover-item { padding: 18px 18px; gap: 18px; }
-    .trip-cover-item-icon { font-size: 32px; width: 50px; height: 50px; }
-    .trip-cover-item-label { font-size: 20px; }
-    .trip-cover-item-arrow { font-size: 20px; }
+    /* 長輩用手機瀏覽時,封面這排項目(行程說明/行程規劃/照片影片...)改成置中版面:
+       圖示放在文字上方、整塊置中,拿掉右邊的箭頭符號(手機上本來就是整排都能點,
+       箭頭反而是多餘的視覺雜訊),圖示跟文字都再放大一點,更符合手機操作習慣。 */
+    .trip-cover-item {
+      flex-direction: column; justify-content: center; text-align: center;
+      padding: 22px 16px; gap: 10px;
+    }
+    .trip-cover-item-icon { font-size: 40px; width: 64px; height: 64px; }
+    .trip-cover-item-label { font-size: 22px; flex: none; }
+    .trip-cover-item-arrow { display: none; }
   }
 
   /* Quill 富文本編輯器 - 深色主題覆寫 */
