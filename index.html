@@ -391,10 +391,10 @@
     #view-trip-detail.showing-cover .trip-subview,
     #view-trip-detail.showing-cover #detail-title,
     #view-trip-detail.showing-cover #detail-sub,
-    #view-trip-detail.showing-cover #back-to-cover {
+    #view-trip-detail.showing-cover #back-to-cover,
+    #view-trip-detail.showing-cover #back-to-trips {
       display: none !important;
     }
-    #view-trip-detail:not(.showing-cover) #back-to-cover { display: inline-block; }
 
     /* 1. 封面索引項目的圖示跟文字放大一點,方便長輩看清楚 */
     .trip-cover-item { padding: 18px 18px; gap: 18px; }
@@ -402,24 +402,30 @@
     .trip-cover-item-label { font-size: 20px; }
     .trip-cover-item-arrow { font-size: 20px; }
 
-    /* 2. 進入頁籤內容後,標題區改顯示「目前在哪一頁」(例如「行程規劃」),
-       不再顯示行程名稱(神戶、大阪那個名稱已經在封面看過了,這裡改顯示更有用的當頁資訊)。
-       做法:把原本的文字用 font-size:0 藏起來,改用 ::before 顯示 data-sub-label 屬性的內容——
-       這個屬性只在手機版這裡被讀取,桌機版完全沒有用到,所以桌機版顯示的還是原本的行程名稱。 */
-    #view-trip-detail:not(.showing-cover) #detail-title { font-size: 0; margin-bottom: 4px; }
-    #view-trip-detail:not(.showing-cover) #detail-title::before {
-      content: attr(data-sub-label);
-      display: block; font-size: 24px;
-      font-family: Georgia, "Noto Serif TC", serif; color: var(--gold);
+    /* 2. 進入頁籤內容後,原本「行程名稱」跟「日期區間」這兩行直接不顯示——
+       行程名稱、日期在封面就已經看過了,這裡再看到反而是多餘的重複資訊,
+       乾脆整個藏起來,讓畫面更乾淨,長輩也不會被太多文字搞混。 */
+    #view-trip-detail:not(.showing-cover) #detail-title,
+    #view-trip-detail:not(.showing-cover) #detail-sub {
+      display: none !important;
     }
 
-    /* 3. 隱藏原本的頁籤列(封面本身就是導覽入口,不需要再重複一次),
-       改把「回到封面」做成一個大一點、圓潤可愛的按鈕,方便點擊、也更顯眼。 */
+    /* 3. 隱藏原本的頁籤列(封面本身就是導覽入口,不需要再重複一次)。
+       「回到行程列表」「回到封面」這兩顆按鈕改成同樣的圓潤按鈕樣式、直向堆疊
+       (回到行程列表在上、回到封面在下)方便長輩點擊,也不會擠成一排太窄。 */
     #trip-sub-nav { display: none !important; }
+    #view-trip-detail:not(.showing-cover) #back-to-trips,
     #view-trip-detail:not(.showing-cover) #back-to-cover {
+      display: flex; align-items: center; width: fit-content;
       font-size: 17px; font-weight: 600; padding: 10px 18px;
       background: var(--bg-soft); border: 1px solid var(--line); border-radius: 20px;
-      color: var(--gold);
+      color: var(--gold); margin-bottom: 10px;
+    }
+    #view-trip-detail:not(.showing-cover) #back-to-trips::before {
+      /* 用行事曆圖示代表「行程列表」,跟下面「回到封面」的房子圖示區分開來,
+         同一個畫面上不會出現兩個一模一樣的圖示 */
+      content: "\1F5D2\FE0F"; margin-right: 6px;
+      font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
     }
     #view-trip-detail:not(.showing-cover) #back-to-cover::before {
       content: "\1F3E0"; margin-right: 6px;
@@ -473,6 +479,25 @@
     .itinerary-mobile-index .trip-cover-item-label { font-size: 20px; }
     .itinerary-mobile-index .trip-cover-item-arrow { font-size: 20px; }
     #itinerary-mobile-index-days { display: flex; flex-direction: column; gap: 10px; }
+
+    /* 自訂的「第 X 天」小行事曆徽章:紅色月份 + 白底日期數字,取代固定顯示 JUL 17 的
+       行事曆 emoji(見上面 buildDayIconHtml() 的說明)。要蓋掉 .trip-cover-item-icon
+       原本的圓形底色/置中 emoji 樣式,所以每個屬性都重新指定一次。 */
+    .itinerary-mobile-index .trip-cover-item-icon.itinerary-day-icon {
+      background: #fff; border: 1px solid var(--line); border-radius: 10px;
+      display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start;
+      overflow: hidden; padding: 0; box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+    }
+    .itinerary-day-icon-month {
+      display: block; background: #d9483c; color: #fff;
+      font-size: 11px; font-weight: 700; letter-spacing: 0.5px; text-align: center;
+      padding: 3px 0; font-family: Arial, Helvetica, sans-serif;
+    }
+    .itinerary-day-icon-num {
+      display: block; flex: 1; text-align: center; color: #3b2a21;
+      font-size: 19px; font-weight: 700; font-family: Arial, Helvetica, sans-serif;
+      display: flex; align-items: center; justify-content: center;
+    }
   }
 
   .trip-cover-hero {
@@ -3767,6 +3792,23 @@
 
   // 手機版「行程規劃」索引清單裡的每一天項目,樣式跟封面索引一樣(trip-cover-item),
   // 跟上面 renderDayTabs() 產生的頁籤按鈕分開維護,但共用同一個 date/switchItineraryDay 邏輯。
+  // ������ 這個 emoji 在 iOS/macOS 上永遠固定畫成「JUL 17」的樣子(蘋果內建圖案就是這樣,
+  // 不會因為程式碼而變動),拿來當「第 X 天」的圖示會讓長輩誤以為日期真的是 7/17,
+  // 所以這裡改成自己刻一個小行事曆徽章(紅色月份 + 白底日期數字),月份跟日期會照真正的
+  // 那一天顯示,不會有這種「圖示日期跟文字日期對不上」的問題。
+  const MONTH_ABBR = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+  function buildDayIconHtml(dateStr) {
+    const parts = dateStr.split("-");
+    const month = MONTH_ABBR[Number(parts[1]) - 1] || "";
+    const day = Number(parts[2]) || "";
+    return (
+      `<span class="trip-cover-item-icon itinerary-day-icon">` +
+      `<span class="itinerary-day-icon-month">${month}</span>` +
+      `<span class="itinerary-day-icon-num">${day}</span>` +
+      `</span>`
+    );
+  }
+
   function renderItineraryMobileIndexDays(days) {
     const container = document.getElementById("itinerary-mobile-index-days");
     container.innerHTML = "";
@@ -3777,7 +3819,7 @@
       btn.dataset.date = date;
       const mmdd = date.slice(5).replace("-", "/");
       btn.innerHTML =
-        `<span class="trip-cover-item-icon">&#128197;</span>` +
+        buildDayIconHtml(date) +
         `<span class="trip-cover-item-label">第${idx + 1}天 ${mmdd}</span>` +
         `<span class="trip-cover-item-arrow">→</span>`;
       btn.addEventListener("click", () => {
