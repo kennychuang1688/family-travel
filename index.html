@@ -6210,6 +6210,9 @@
             body: JSON.stringify({
               driveFileId: driveFile.id, name: file.name, mimeType: file.type, size: file.size,
               thumbnailLink: driveFile.thumbnailLink, webViewLink: driveFile.webViewLink, webContentLink: driveFile.webContentLink,
+              // 瀏覽器讀到的「這個檔案在你電腦上最後修改的時間」——影片常常沒有 Google Drive
+              // 讀得到的拍攝時間中繼資料,這個備援值能讓排序不會退回沒有意義的上傳時間。
+              clientLastModified: file.lastModified ? new Date(file.lastModified).toISOString() : null,
             }),
           });
         }, 3, (attempt) => {
