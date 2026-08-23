@@ -1760,7 +1760,8 @@
 
     const promise = (async () => {
       const headers = {};
-      if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
+      const stationTokenForAuth = getStationToken();
+      if (stationTokenForAuth) headers["Authorization"] = `Bearer ${stationTokenForAuth}`;
       const res = await fetch(`${WORKER_URL}/api/media/${m.id}/thumbnail?size=${size}`, { headers });
       if (!res.ok) throw new Error("圖片載入失敗");
       const blob = await res.blob();
@@ -2000,9 +2001,42 @@
   });
 
 
-  let idToken = null;
   let userIsAdmin = false;
   let userRole = "member"; // "admin" | "vip" | "member",登入後由 /api/auth 回傳決定
+
+  // ---------- 站內通行證(Station Token) ----------
+  // 取代原本每次都要仰賴 Google ID Token(固定約 1 小時效期、換發要靠 Google 配合)的做法。
+  // 登入成功後,後端會簽發一張自己的票(效期 20 小時、有操作就滑動延長),存進 localStorage,
+  // 這樣關掉分頁、重新整理頁面都還記得登入狀態,不用每次都重新走一次 Google 登入畫面。
+  const STATION_TOKEN_KEY = "family_travel_station_token";
+
+  function getStationToken() {
+    return localStorage.getItem(STATION_TOKEN_KEY);
+  }
+  function setStationToken(token) {
+    if (token) localStorage.setItem(STATION_TOKEN_KEY, token);
+    else localStorage.removeItem(STATION_TOKEN_KEY);
+  }
+
+  // 站內票本身只含 email/sid/效期,不含姓名、頭像這些顯示用的資料——這些額外存一份在
+  // 這裡,搭配站內票一起用。重新整理頁面時(見 initApp),只要站內票還有效,就能直接
+  // 用這份資料還原「已登入」的畫面,不需要重新跳出 Google 登入畫面才能拿到姓名/頭像。
+  const USER_PROFILE_KEY = "family_travel_user_profile";
+
+  function getStoredProfile() {
+    try {
+      const raw = localStorage.getItem(USER_PROFILE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (err) {
+      return null;
+    }
+  }
+  function setStoredProfile(profile) {
+    try { localStorage.setItem(USER_PROFILE_KEY, JSON.stringify(profile)); } catch (err) { /* 忽略 */ }
+  }
+  function clearStoredProfile() {
+    localStorage.removeItem(USER_PROFILE_KEY);
+  }
 
   // 跟後端 worker.js 裡的 PERMISSION_MATRIX 完全對應——這裡只用來控制「要不要顯示/啟用
   // 某個按鈕或分頁」這種畫面呈現,真正的權限把關永遠是後端說了算;前端這份純粹是為了
@@ -3163,24 +3197,45 @@
       itp_support: true,         // 加強 Safari(iPhone 常用瀏覽器)的相容性
     });
     google.accounts.id.renderButton(document.getElementById("g_id_signin"), { theme: "outline", size: "large", text: "signin_with" });
+  }
+
+  // 如果是因為站內票失效(自然過期 20 小時、或被其他裝置的新登入取代)被導回登入畫面的,
+  // handleSessionInvalid 會先把對應的提示文字存進 sessionStorage 再重新整理頁面——
+  // 這裡負責在登入畫面上顯示出來,讓使用者清楚知道「為什麼」被登出,而不是一個含糊的空白畫面。
+  function showStoredLoginNotice() {
+    const notice = sessionStorage.getItem("family_travel_login_notice");
+    if (!notice) return;
+    sessionStorage.removeItem("family_travel_login_notice");
+    const errorEl = document.getElementById("auth-error");
+    if (errorEl) errorEl.textContent = notice;
+  }
+
+  // ---------- 頁面進入點 ----------
+  //
+  // 站內票搭配 localStorage 存放,關掉分頁、重新整理頁面都還記得登入狀態,不需要每次都
+  // 重新走一次 Google 登入畫面。判斷邏輯:
+  //   有存起來的站內票 + 個人資料 → 先直接用這份資料還原「已登入」畫面(樂觀顯示,體感快),
+  //   同時 switchView("trips") 觸發的 loadTrips() 會自然而然地用這張票打一次真正的 API,
+  //   如果票其實已經失效,apiFetch 會自動處理(清除本機資料 + 顯示提示 + 回到登入畫面),
+  //   不需要在這裡另外寫一次驗證邏輯。
+  //   沒有存起來的票 → 一般走 Google 登入畫面。
+  function initApp() {
     initQuillItinerary();
     initQuillNotes();
     initQuillOverview();
     checkInAppBrowserWarning();
-  }
 
-  // Google 核發的登入權杖,效期大約 1 小時,過期之後所有存檔都會失敗,而且不會自動恢復,
-  // 要等使用者重新整理頁面、重新登入才會拿到新的權杖——這正是「編輯到一半,過一陣子存檔
-  // 突然失敗、內容救不回來」的根本原因之一。
-  //
-  // 這裡改成每 45 分鐘(留一點安全空間,不要卡在剛好 1 小時的邊界)主動呼叫一次
-  // google.accounts.id.prompt(),嘗試「悄悄地」拿一個新權杖——如果使用者的瀏覽器裡,
-  // Google 登入的狀態還有效,這個動作通常會安靜地在背景完成,不會跳出任何畫面、
-  // 也不會打斷使用者正在做的事情;真正發生作用的地方在 handleCredentialResponse 裡
-  // (那裡會判斷「這是背景換權杖,不是第一次登入」,只更新權杖、不會影響畫面)。
-  // 舊的「每 45 分鐘悄悄更新一次」機制已經移除,改成「每次呼叫 API 前先檢查權杖夠不夠新鮮」
-  // (見下面的 apiFetch/refreshIdTokenIfNeeded),這樣涵蓋更精準,不用再另外維護一個獨立的
-  // 定時器,也不會有兩套機制同時各自呼叫 google.accounts.id.prompt()、互相打架的疑慮。
+    const token = getStationToken();
+    const profile = getStoredProfile();
+    if (token && profile) {
+      applyLoggedInState(profile);
+    } else {
+      initGoogleSignIn();
+    }
+    showStoredLoginNotice();
+  }
+  window.onload = initApp;
+
 
   // 偵測是否在 LINE / Messenger / Instagram 等 App 內建瀏覽器(webview)開啟。
   // Google 從 2021 年起基於安全考量,直接封鎖這類內嵌瀏覽器的登入,不管網站怎麼寫都無法正常登入,
@@ -3198,123 +3253,76 @@
     const gateEl = document.getElementById("gate");
     if (gateEl) gateEl.insertBefore(warningEl, gateEl.firstChild);
   }
-  window.onload = initGoogleSignIn;
 
-  // ---------- 每次呼叫 API 前,先確認登入權杖夠不夠新鮮 ----------
-
-  const TOKEN_EXPIRY_BUFFER_MS = 3 * 60 * 1000; // 距離真正過期還剩 3 分鐘內,就視為「快過期了」
-  const TOKEN_REFRESH_WAIT_MS = 4 * 1000; // 嘗試背景更新時,最多等這麼久看有沒有拿到新權杖
-
-  // 權杖(idToken)是一種叫 JWT 的格式,裡面本來就直接寫著什麼時候會過期(exp 這個時間戳記),
-  // 不用另外問 Google,在瀏覽器本機解碼這串文字就能立刻知道——這個動作是純本機運算,
-  // 不會送出任何網路請求,速度是毫秒等級,感覺不出任何延遲。
-  function getIdTokenExpiryMs() {
-    if (!idToken) return 0;
-    try {
-      const payloadBase64 = idToken.split(".")[1];
-      const payloadJson = decodeURIComponent(
-        atob(payloadBase64.replace(/-/g, "+").replace(/_/g, "/"))
-          .split("")
-          .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
-          .join("")
-      );
-      return (JSON.parse(payloadJson).exp || 0) * 1000;
-    } catch (err) {
-      return 0; // 解析失敗,當作不知道到期時間,保守處理成「需要更新」
-    }
-  }
-  function isIdTokenExpiringSoon() {
-    const expiryMs = getIdTokenExpiryMs();
-    if (!expiryMs) return true;
-    return expiryMs - Date.now() < TOKEN_EXPIRY_BUFFER_MS;
-  }
-
-  // 同一時間只允許一個「更新權杖」的動作在進行,短時間內好幾個 API 請求同時發現權杖快過期時,
-  // 全部共用同一次更新的結果,不要各自獨立發起——不然反而可能被 Google 判定成短時間內
-  // 重複觸發、直接跳過,互相打架誰都更新不成功。
-  let pendingTokenRefresh = null;
-  function refreshIdTokenIfNeeded() {
-    if (!isIdTokenExpiringSoon()) return Promise.resolve(true);
-    if (pendingTokenRefresh) return pendingTokenRefresh;
-
-    pendingTokenRefresh = new Promise((resolve) => {
-      const beforeToken = idToken;
-      try {
-        google.accounts.id.prompt(); // 更新結果會透過 handleCredentialResponse 換掉 idToken
-      } catch (err) {
-        console.warn("嘗試背景更新登入權杖時發生錯誤:", err);
-      }
-      // 不等 Google 那個「正式回報結果」的通知(官方文件說可能延遲到 1 分鐘後才收到),
-      // 改成自己設一個短暫的等待時間,時間到了直接檢查權杖有沒有真的換成新的。
-      setTimeout(() => {
-        pendingTokenRefresh = null;
-        resolve(idToken !== beforeToken && !isIdTokenExpiringSoon());
-      }, TOKEN_REFRESH_WAIT_MS);
-    });
-    return pendingTokenRefresh;
-  }
-
-  // 權杖更新失敗時的收尾動作。這裡刻意不判斷「現在是不是在編輯模式」——那個判斷不準
-  // (行程表格卡片切換編輯/預覽狀態時,會被 Quill 誤判成使用者有動作,反而可能造成更新
-  // 這一步本身的風險)。改成只檢查「行程規劃/行程簡介/注意事項」這三個各自的自動存檔
-  // 計時器,是不是真的還在排隊中、還沒真正觸發——只有真的有排隊中的,才提前觸發它去存檔,
-  // 沒有排隊中的完全不動,不會多冒任何不必要的寫入風險。
+  // ---------- 站內通行證運作方式 ----------
   //
-  // 這個時候用的還是「快過期但還沒真的過期」的舊權杖,理論上還能正常使用,所以這裡的存檔
-  // 動作預期會成功。存完之後直接登出、不用彈跳提醒使用者。
-  let isFlushingBeforeSignOut = false;
-  async function flushPendingSavesAndSignOut() {
-    if (isFlushingBeforeSignOut) return; // 避免同時間被觸發好幾次
-    isFlushingBeforeSignOut = true;
-    try {
-      if (autoSaveTimer) {
-        clearTimeout(autoSaveTimer);
-        autoSaveTimer = null;
-        await saveCurrentDayContent(true);
+  // 舊機制(已移除):每次 API 呼叫前,先本機解碼 Google ID Token 判斷快不快過期,快過期就呼叫
+  // google.accounts.id.prompt() 背景換發、等結果、失敗就整頁強制登出——因為 Google ID Token
+  // 效期固定約 1 小時、換發要仰賴 Google 配合(冷卻期、第三方 cookie、網路狀況都可能導致失敗),
+  // 旅遊時常常單純瀏覽也被無預警登出。
+  //
+  // 新機制:登入時後端會多回傳一張站內通行證(stationToken),存進 localStorage,之後每次 API
+  // 呼叫都帶著它。後端每次驗證成功,都會在回應標頭夾帶一張新簽的票(效期重新算 20 小時),
+  // 前端收到就更新 localStorage——只要持續有在用(含單純瀏覽),就會不斷延長,不會遇到「時間
+  // 到就登出」;真正會被登出的情況只剩下「超過 20 小時完全沒操作」或「同帳號在其他裝置重新
+  // 登入,取代了這裡的 session」。不需要再額外背景檢查/重試 Google 換發,邏輯簡單很多。
+
+  async function apiFetch(path, options = {}) {
+    const token = getStationToken();
+    const headers = options.headers || {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch(`${WORKER_URL}${path}`, { ...options, headers });
+
+    // 滑動延長:這次請求如果驗證成功,後端會夾帶一張新票,更新起來
+    const refreshedToken = res.headers.get("X-Station-Token");
+    if (refreshedToken) setStationToken(refreshedToken);
+
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      if (res.status === 401) {
+        handleSessionInvalid(data.error, data.code);
       }
-      if (typeof tripNotesAutoSaveTimer !== "undefined" && tripNotesAutoSaveTimer) {
-        clearTimeout(tripNotesAutoSaveTimer);
-        tripNotesAutoSaveTimer = null;
-        await saveTripNotes();
-      }
-      if (typeof overviewAutoSaveTimer !== "undefined" && overviewAutoSaveTimer) {
-        clearTimeout(overviewAutoSaveTimer);
-        overviewAutoSaveTimer = null;
-        await saveOverview();
-      }
-    } catch (err) {
-      console.error("權杖更新失敗、登出前強制存檔時發生錯誤:", err);
+      throw new Error(data.error || "發生錯誤");
     }
-    idToken = null;
+    return data;
+  }
+
+  // 站內通行證失效(自然過期,或被其他裝置的新登入取代)時的收尾動作:
+  // 清掉本機存的票、記下一句對應的提示訊息,然後回到登入畫面。
+  // 跟舊機制不同,這裡不用「先強制存檔再登出」那一套——因為滑動延長的設計下,只要使用者
+  // 持續有操作,票根本不會過期;真的走到這裡,代表要嘛整整 20 小時沒碰過網站(不會有還沒
+  // 存檔的內容),要嘛是被其他裝置登入取代(那也是使用者自己在別的地方的操作,不是資料風險)。
+  let isHandlingSessionInvalid = false;
+  function handleSessionInvalid(message, code) {
+    if (isHandlingSessionInvalid) return;
+    isHandlingSessionInvalid = true;
+    setStationToken(null);
+    clearStoredProfile();
     try { google.accounts.id.disableAutoSelect(); } catch (err) { /* 忽略 */ }
+    const noticeText = code === "SESSION_SUPERSEDED"
+      ? (message || "這個帳號已經在其他裝置重新登入,此處已自動登出")
+      : "登入已逾期,請重新登入";
+    sessionStorage.setItem("family_travel_login_notice", noticeText);
     location.reload();
   }
 
-  async function apiFetch(path, options = {}) {
-    if (!isFlushingBeforeSignOut && idToken && isIdTokenExpiringSoon()) {
-      const refreshed = await refreshIdTokenIfNeeded();
-      if (!refreshed) {
-        flushPendingSavesAndSignOut(); // 不等待它做完,反正做完就會重新整理頁面
-        throw new Error("登入權杖已過期,即將重新整理頁面");
-      }
-    }
-    const headers = options.headers || {};
-    if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
-    const res = await fetch(`${WORKER_URL}${path}`, { ...options, headers });
-    const data = await res.json();
-    if (!res.ok || data.error) throw new Error(data.error || "發生錯誤");
-    return data;
-  }
+
 
   // 透過我們自己的 Worker 下載檔案(而不是直接連到 Google Drive 的網址),
   // 這樣不需要使用者裝置的瀏覽器對 google.com 有登入狀態,避免手機上出現 403 沒有權限的問題。
   async function downloadFileViaWorker(path, filename) {
+    const token = getStationToken();
     const headers = {};
-    if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
+    if (token) headers["Authorization"] = `Bearer ${token}`;
     const res = await fetch(`${WORKER_URL}${path}`, { headers });
+    const refreshedToken = res.headers.get("X-Station-Token");
+    if (refreshedToken) setStationToken(refreshedToken);
     if (!res.ok) {
       let message = "下載失敗";
-      try { const data = await res.json(); message = data.error || message; } catch (e) { /* 不是 JSON 就用預設訊息 */ }
+      let code;
+      try { const data = await res.json(); message = data.error || message; code = data.code; } catch (e) { /* 不是 JSON 就用預設訊息 */ }
+      if (res.status === 401) handleSessionInvalid(message, code);
       throw new Error(message);
     }
     const blob = await res.blob();
@@ -3332,7 +3340,8 @@
   // 裝置不支援分享、或使用者的瀏覽器沒有這個功能時,自動退回一般下載(存到「檔案」App)。
   async function shareOrDownloadMedia(m) {
     const headers = {};
-    if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
+    const stationTokenForAuth = getStationToken();
+    if (stationTokenForAuth) headers["Authorization"] = `Bearer ${stationTokenForAuth}`;
     const res = await fetch(`${WORKER_URL}/api/media/${m.id}/download`, { headers });
     if (!res.ok) {
       let message = "下載失敗";
@@ -3367,14 +3376,76 @@
     URL.revokeObjectURL(url);
   }
 
+  // 把「登入成功/頁面重新載入時,用已知的個人資料還原整個已登入畫面」這段邏輯抽成共用函式——
+  // handleCredentialResponse(使用者按登入按鈕)、initApp(重新整理頁面、站內票還有效)
+  // 兩個地方都會用到,不要各自維護一份容易漏改。
+  function applyLoggedInState(profile) {
+    userIsAdmin = !!profile.isAdmin;
+    userRole = profile.role || "member";
+
+    document.getElementById("gate").style.display = "none";
+    document.getElementById("main-nav").style.display = "flex";
+    document.getElementById("user-box").style.display = "flex";
+    document.getElementById("user-name").textContent = profile.name || profile.email;
+    if (userIsAdmin) {
+      document.getElementById("nav-logs").style.display = "inline-block";
+      document.getElementById("nav-users").style.display = "inline-block";
+    }
+
+    // 下面這一大段都是「畫面裝飾用」的角色權限設定(要不要顯示某顆按鈕、頭像圖片等),
+    // 跟「能不能看到旅遊行程列表」無關——真正的權限把關永遠是後端在做。
+    // 特別包一層 try/catch:就算這段裡面因為某些意外情況(例如某個角色少了某個
+    // 對應的 DOM 元素)噴錯,也絕對不能因此連累到下面一定要執行到的 switchView("trips"),
+    // 不然畫面會卡在「登入完成但整個行程列表都是空白」這種很難察覺的狀態。
+    try {
+      // 在 <body> 上加註目前角色對應的 class,讓 CSS 統一決定哪些功能要隱藏——
+      // 比起在一堆按鈕各自的建立邏輯裡插入 if (userRole === ...) 判斷,集中在 CSS
+      // 一個地方管理,以後角色權限有調整時比較不容易漏改。
+      document.body.classList.add(`role-${userRole}`);
+      if (!hasPermission("expensesRead")) document.body.classList.add("no-expenses-access");
+      if (!hasPermission("checklistRead")) document.body.classList.add("no-checklist-access");
+      if (!hasPermission("documentsRead")) document.body.classList.add("no-documents-access");
+      if (!hasPermission("notesRead")) document.body.classList.add("no-notes-access");
+      if (!hasPermission("tripsWrite")) document.body.classList.add("no-trips-write");
+      if (!hasPermission("itineraryWrite")) document.body.classList.add("no-itinerary-write");
+      if (!hasPermission("mediaUpload")) document.body.classList.add("no-media-upload");
+      if (!hasPermission("mediaDelete")) document.body.classList.add("no-media-delete");
+      if (!hasPermission("mediaEdit")) document.body.classList.add("no-media-edit");
+      if (!hasPermission("mediaDownload")) document.body.classList.add("no-media-download");
+      if (!hasPermission("expensesDelete")) document.body.classList.add("no-expenses-delete");
+      if (!hasPermission("expensesWrite")) document.body.classList.add("no-expenses-write");
+      if (!hasPermission("expensesWrite")) {
+        // 匯率設定要「看得到但不能編輯」,不是整個藏起來,所以用 disabled 屬性,不是用 CSS 隱藏
+        ["exchange-rate-currency", "exchange-rate-value", "exchange-rate-save-btn", "exchange-rate-clear-btn"].forEach((id) => {
+          const el = document.getElementById(id);
+          if (el) el.disabled = true;
+        });
+      }
+      if (!hasPermission("checklistDelete")) document.body.classList.add("no-checklist-delete");
+      if (!hasPermission("documentsDelete")) document.body.classList.add("no-documents-delete");
+
+      document.getElementById("user-avatar").src = profile.picture || "";
+    } catch (decorErr) {
+      console.error("設定角色相關畫面裝飾時發生錯誤(不影響登入本身):", decorErr);
+    }
+
+    switchView("trips");
+  }
+
+  // 使用者按下 Google 登入按鈕(或頁面上有殘留的 Google One Tap 自動選擇)時觸發。
+  // 驗證通過後,後端會多回傳一張站內通行證(stationToken)——之後所有 API 請求改用這張票,
+  // 不再仰賴 Google ID Token 本身(那張只在這一次登入請求裡用到,驗證完就沒有用處了)。
   async function handleCredentialResponse(response) {
-    // 如果「登入畫面」已經被隱藏起來,代表使用者本來就已經是登入狀態——這次呼叫是背景悄悄
-    // 換發新權杖(見上面的 refreshIdTokenIfNeeded),不是使用者剛按下登入按鈕的第一次登入。
-    // 這種情況只更新權杖就好,不要重跑一次完整的登入流程,更不能執行到後面的 switchView("trips"),
-    // 不然使用者正在編輯到一半的畫面,會無緣無故被強制跳回行程列表,嚇到人。
-    const alreadyLoggedIn = document.getElementById("gate").style.display === "none";
-    idToken = response.credential;
-    if (alreadyLoggedIn) return;
+    const googleIdToken = response.credential;
+
+    // Google ID Token 裡的 picture 欄位只有登入這一刻能拿到,站內票本身不包含這個資訊,
+    // 所以要在這裡順便解出來、跟其他個人資料一起存進 localStorage,這樣重新整理頁面時
+    // (見下面的 initApp)才能不用再問 Google,就能還原頭像等畫面顯示。
+    let picture = "";
+    try {
+      const googlePayload = JSON.parse(atob(googleIdToken.split(".")[1]));
+      picture = googlePayload.picture || "";
+    } catch (err) { /* 解析失敗就沒有頭像,不影響登入本身 */ }
 
     const errorEl = document.getElementById("auth-error");
     errorEl.textContent = "";
@@ -3382,60 +3453,20 @@
       const data = await apiFetch("/api/auth", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id_token: idToken }),
+        body: JSON.stringify({ id_token: googleIdToken }),
       });
-      userIsAdmin = !!data.isAdmin;
-      userRole = data.role || "member";
 
-      document.getElementById("gate").style.display = "none";
-      document.getElementById("main-nav").style.display = "flex";
-      document.getElementById("user-box").style.display = "flex";
-      document.getElementById("user-name").textContent = data.name || data.email;
-      if (userIsAdmin) {
-        document.getElementById("nav-logs").style.display = "inline-block";
-        document.getElementById("nav-users").style.display = "inline-block";
+      if (!data.stationToken) {
+        // 理論上不會發生(後端已經在階段 1~3 準備好簽發站內票了),
+        // 這裡只是保守起見,萬一密鑰或資料庫遷移還沒到位,給出明確的錯誤訊息,
+        // 而不是讓使用者卡在一個「看起來登入了、但其實後面每個 API 都會失敗」的狀態。
+        throw new Error("伺服器尚未回傳登入憑證,請確認後端設定(STATION_TOKEN_SECRET / migration)是否完成");
       }
+      setStationToken(data.stationToken);
 
-      // 下面這一大段都是「畫面裝飾用」的角色權限設定(要不要顯示某顆按鈕、頭像圖片等),
-      // 跟「能不能看到旅遊行程列表」無關——真正的權限把關永遠是後端在做。
-      // 特別包一層 try/catch:就算這段裡面因為某些意外情況(例如某個角色少了某個
-      // 對應的 DOM 元素、token payload 格式異常等)噴錯,也絕對不能因此連累到
-      // 下面一定要執行到的 switchView("trips"),不然畫面會卡在「登入完成但整個
-      // 行程列表都是空白」這種很難察覺的狀態,使用者得自己點一次分頁鈕才能救回來。
-      try {
-        // 在 <body> 上加註目前角色對應的 class,讓 CSS 統一決定哪些功能要隱藏——
-        // 比起在一堆按鈕各自的建立邏輯裡插入 if (userRole === ...) 判斷,集中在 CSS
-        // 一個地方管理,以後角色權限有調整時比較不容易漏改。
-        document.body.classList.add(`role-${userRole}`);
-        if (!hasPermission("expensesRead")) document.body.classList.add("no-expenses-access");
-        if (!hasPermission("checklistRead")) document.body.classList.add("no-checklist-access");
-        if (!hasPermission("documentsRead")) document.body.classList.add("no-documents-access");
-        if (!hasPermission("notesRead")) document.body.classList.add("no-notes-access");
-        if (!hasPermission("tripsWrite")) document.body.classList.add("no-trips-write");
-        if (!hasPermission("itineraryWrite")) document.body.classList.add("no-itinerary-write");
-        if (!hasPermission("mediaUpload")) document.body.classList.add("no-media-upload");
-        if (!hasPermission("mediaDelete")) document.body.classList.add("no-media-delete");
-        if (!hasPermission("mediaEdit")) document.body.classList.add("no-media-edit");
-        if (!hasPermission("mediaDownload")) document.body.classList.add("no-media-download");
-        if (!hasPermission("expensesDelete")) document.body.classList.add("no-expenses-delete");
-        if (!hasPermission("expensesWrite")) document.body.classList.add("no-expenses-write");
-        if (!hasPermission("expensesWrite")) {
-          // 匯率設定要「看得到但不能編輯」,不是整個藏起來,所以用 disabled 屬性,不是用 CSS 隱藏
-          ["exchange-rate-currency", "exchange-rate-value", "exchange-rate-save-btn", "exchange-rate-clear-btn"].forEach((id) => {
-            const el = document.getElementById(id);
-            if (el) el.disabled = true;
-          });
-        }
-        if (!hasPermission("checklistDelete")) document.body.classList.add("no-checklist-delete");
-        if (!hasPermission("documentsDelete")) document.body.classList.add("no-documents-delete");
-
-        const payload = JSON.parse(atob(idToken.split(".")[1]));
-        document.getElementById("user-avatar").src = payload.picture || "";
-      } catch (decorErr) {
-        console.error("設定角色相關畫面裝飾時發生錯誤(不影響登入本身):", decorErr);
-      }
-
-      switchView("trips");
+      const profile = { email: data.email, name: data.name, picture, isAdmin: !!data.isAdmin, role: data.role || "member" };
+      setStoredProfile(profile);
+      applyLoggedInState(profile);
     } catch (err) {
       errorEl.textContent = "無法登入:" + err.message;
     }
@@ -3469,7 +3500,8 @@
       // 存檔失敗也要讓使用者能正常登出,不要卡住登出流程本身
       console.error("登出前強制存檔失敗:", err);
     }
-    idToken = null;
+    setStationToken(null);
+    clearStoredProfile();
     google.accounts.id.disableAutoSelect();
     location.reload();
   });
@@ -3508,7 +3540,7 @@
       const xhr = new XMLHttpRequest();
       if (cancelToken) cancelToken.activeXhr = xhr;
       xhr.open("POST", relayUrl, true);
-      xhr.setRequestHeader("Authorization", `Bearer ${idToken}`);
+      xhr.setRequestHeader("Authorization", `Bearer ${getStationToken()}`);
       xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
       xhr.setRequestHeader("X-File-Name", encodeURIComponent(file.name));
       xhr.upload.onprogress = (e) => {
@@ -3552,7 +3584,7 @@
         const xhr = new XMLHttpRequest();
         if (cancelToken) cancelToken.activeXhr = xhr;
         xhr.open("PUT", relayUrl, true);
-        xhr.setRequestHeader("Authorization", `Bearer ${idToken}`);
+        xhr.setRequestHeader("Authorization", `Bearer ${getStationToken()}`);
         xhr.setRequestHeader("Content-Range", `bytes ${start}-${end - 1}/${total}`);
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) onProgress(Math.round(((start + e.loaded) / total) * 100));
@@ -3578,7 +3610,7 @@
       return new Promise((resolve) => {
         const xhr = new XMLHttpRequest();
         xhr.open("PUT", relayUrl, true);
-        xhr.setRequestHeader("Authorization", `Bearer ${idToken}`);
+        xhr.setRequestHeader("Authorization", `Bearer ${getStationToken()}`);
         xhr.setRequestHeader("Content-Range", `bytes */${total}`);
         xhr.onload = () => {
           if (xhr.status === 308) {
@@ -5840,7 +5872,8 @@
       (async () => {
         try {
           const headers = {};
-          if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
+          const stationTokenForAuth = getStationToken();
+          if (stationTokenForAuth) headers["Authorization"] = `Bearer ${stationTokenForAuth}`;
           const res = await fetch(`${WORKER_URL}${path}`, { headers });
           if (!res.ok) throw new Error("縮圖載入失敗");
           const blob = await res.blob();
