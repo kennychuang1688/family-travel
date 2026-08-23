@@ -5826,23 +5826,40 @@
   });
 
   let mediaSortBy = "taken";
-  let mediaSortDir = "asc";
+  let mediaSortDir = "asc"; // asc = 由舊到新(預設),desc = 由新到舊
+
+  // 拿一筆媒體項目的時間值,拿不到或格式無法解析時一律當作 0,不要讓 NaN 混進比較裡——
+  // JS 的 NaN 跟任何數字比較結果都是 false,如果直接拿 NaN 相減去排序,那幾筆的相對順序
+  // 會變成「排序沒有真的比較到」,只能維持原本陣列的順序,也就是後端查詢回來的原始順序
+  // (目前後端是照上傳時間新到舊查詢的)。這裡明確 fallback 成 0,避免這種情況悄悄發生。
+  function getMediaTimeValue(rawTime) {
+    if (!rawTime) return 0;
+    const t = new Date(rawTime).getTime();
+    return isNaN(t) ? 0 : t;
+  }
 
   function sortMediaItems(items, sortBy, sortDir) {
     const sorted = [...items];
     if (sortBy === "name") {
       sorted.sort((a, b) => (a.name || "").localeCompare(b.name || "", undefined, { numeric: true }));
     } else {
-      // 依實際拍攝時間排序;沒有拍攝時間資訊的,退而用上傳時間
+      // 依實際拍攝時間排序;沒有拍攝時間資訊的,退而用上傳時間。
       sorted.sort((a, b) => {
-        const ta = new Date(a.captured_at || a.uploaded_at || 0).getTime();
-        const tb = new Date(b.captured_at || b.uploaded_at || 0).getTime();
-        return ta - tb;
+        const ta = getMediaTimeValue(a.captured_at || a.uploaded_at);
+        const tb = getMediaTimeValue(b.captured_at || b.uploaded_at);
+        if (ta !== tb) return ta - tb;
+        // 拍攝時間只有「日期」沒有「時分秒」的照片很常見(某些相機/手機的 EXIF 只記錄到天),
+        // 這種情況下同一天的照片時間值會完全相同、變成平手——用上傳時間當作次要依據,
+        // 盡量讓同一天內的順序也是「舊到新」,而不是隨著平手時維持後端原始順序(新到舊)。
+        const ua = getMediaTimeValue(a.uploaded_at);
+        const ub = getMediaTimeValue(b.uploaded_at);
+        return ua - ub;
       });
     }
     if (sortDir === "desc") sorted.reverse();
     return sorted;
   }
+
 
   function updateSortButtonLabels() {
     document.querySelectorAll("#media-sort-buttons .sort-btn").forEach((btn) => {
