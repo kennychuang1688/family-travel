@@ -3533,6 +3533,60 @@
   // 判斷不一樣,所以後端分成兩組端點,但前端這裡統一用同一個函式處理)。
   const SIMPLE_UPLOAD_MAX_SIZE = 4 * 1024 * 1024;
 
+  // ---------- 批量上傳:預估剩餘時間 ----------
+  //
+  // 用「整批已經傳出去的位元組數 ÷ 已經過的時間」算出平均傳輸速度,再用「還沒傳完的
+  // 位元組數 ÷ 這個速度」推算剩餘時間——用整批的平均速度而不是單一檔案的瞬時速度,
+  // 是為了讓估計值不會因為某個檔案剛好特別小/特別大,或某一瞬間網路波動,就跳來跳去。
+  //
+  // 檔案大小差異很大時(例如混合上傳很多小檔案跟幾個大檔案),用「位元組」而不是
+  // 「檔案數量」來算,估計出來的時間才會準——傳 100 張縮圖跟傳 1 支影片,檔案數量都是
+  // 1,但需要的時間天差地遠。
+  function formatUploadEtaDuration(totalSeconds) {
+    if (!isFinite(totalSeconds) || totalSeconds < 0) return null;
+    const totalSec = Math.round(totalSeconds);
+    if (totalSec < 5) return "即將完成";
+    if (totalSec < 60) return `約 ${totalSec} 秒`;
+    const minutes = Math.floor(totalSec / 60);
+    const seconds = totalSec % 60;
+    if (minutes < 60) return seconds > 0 ? `約 ${minutes} 分 ${seconds} 秒` : `約 ${minutes} 分鐘`;
+    const hours = Math.floor(minutes / 60);
+    const remMinutes = minutes % 60;
+    return remMinutes > 0 ? `約 ${hours} 小時 ${remMinutes} 分` : `約 ${hours} 小時`;
+  }
+
+  // 建立一個追蹤器,涵蓋「這一整批」選擇要上傳的檔案(不是單一檔案)。
+  //   markFileDone(file):某個檔案處理完了(不管成功還是失敗都要呼叫),把它的大小
+  //     計入「已經算完的量」,避免下一個檔案的估計把它重複算進「還沒傳完」裡。
+  //   estimate(file, pct):目前這個檔案的上傳進度百分比,回傳一段可以直接接在
+  //     狀態文字後面的字串(例如「,預估剩餘 約 2 分 30 秒」),還在蒐集足夠資料算出
+  //     穩定速度之前,回傳「,預估中...」;整批只有一個位元組大小不明的檔案時回傳空字串。
+  function createUploadEtaTracker(files) {
+    const totalBytes = files.reduce((sum, f) => sum + (f.size || 0), 0);
+    const startTime = Date.now();
+    let bytesDone = 0;
+    return {
+      markFileDone(file) {
+        bytesDone += file.size || 0;
+      },
+      estimate(file, pct) {
+        if (!totalBytes) return "";
+        const currentFileBytes = (file.size || 0) * (pct / 100);
+        const cumulativeBytes = bytesDone + currentFileBytes;
+        const elapsedSec = (Date.now() - startTime) / 1000;
+        // 一開始資料太少(時間太短、或幾乎還沒傳出任何內容)算出來的速度會很不準,
+        // 這段時間先顯示「預估中」,不要顯示一個很可能誤導人的數字。
+        if (elapsedSec < 2 || cumulativeBytes <= 0) return ",預估中...";
+        const speed = cumulativeBytes / elapsedSec; // 位元組/秒
+        const remainingBytes = Math.max(totalBytes - cumulativeBytes, 0);
+        const etaSec = speed > 0 ? remainingBytes / speed : 0;
+        const text = formatUploadEtaDuration(etaSec);
+        return text ? `,預估剩餘 ${text}` : "";
+      },
+    };
+  }
+
+
   function uploadSmallFile(kind, tripId, file, onProgress, cancelToken) {
     const relayUrl = `${WORKER_URL}/api/trips/${tripId}/${kind}/upload-simple`;
     return new Promise((resolve, reject) => {
@@ -6119,6 +6173,7 @@
     const total = files.length;
     const failedFiles = [];
     let successCount = 0;
+    const etaTracker = createUploadEtaTracker(files);
     for (let i = 0; i < files.length; i++) {
       if (currentUploadCancel.cancelled) {
         statusEl.textContent = `已取消上傳(已完成 ${i}/${total} 個)`;
@@ -6129,7 +6184,7 @@
         await retryWholeFileUpload(async () => {
           statusEl.textContent = `處理第 ${i + 1}/${total} 個:${file.name}`;
           const driveFile = await uploadFileToTrip("media", currentTripId, file, (pct) => {
-            statusEl.textContent = `處理第 ${i + 1}/${total} 個:${file.name}(${pct}%)`;
+            statusEl.textContent = `處理第 ${i + 1}/${total} 個:${file.name}(${pct}%${etaTracker.estimate(file, pct)})`;
           }, currentUploadCancel);
 
           await apiFetch(`/api/trips/${currentTripId}/media`, {
@@ -6151,6 +6206,7 @@
         }
         failedFiles.push(file.name);
       }
+      etaTracker.markFileDone(file); // 不管成功或失敗都算「這個檔案處理完了」,下一個檔案的估計才不會把它重複算進「還沒傳完」
     }
     cancelBtn.style.display = "none";
     currentUploadCancel = null;
@@ -6532,6 +6588,7 @@
     const total = files.length;
     const failedFiles = [];
     let successCount = 0;
+    const etaTracker = createUploadEtaTracker(files);
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -6539,7 +6596,7 @@
         await retryWholeFileUpload(async () => {
           statusEl.textContent = `處理第 ${i + 1}/${total} 個:${file.name}`;
           const driveFile = await uploadFileToTrip("documents", currentTripId, file, (pct) => {
-            statusEl.textContent = `處理第 ${i + 1}/${total} 個:${file.name}(${pct}%)`;
+            statusEl.textContent = `處理第 ${i + 1}/${total} 個:${file.name}(${pct}%${etaTracker.estimate(file, pct)})`;
           });
           await apiFetch(`/api/trips/${currentTripId}/documents`, {
             method: "POST",
@@ -6556,6 +6613,7 @@
       } catch (err) {
         failedFiles.push(file.name);
       }
+      etaTracker.markFileDone(file);
     }
     input.value = "";
     statusEl.textContent = failedFiles.length === 0
