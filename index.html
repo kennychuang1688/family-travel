@@ -3561,6 +3561,21 @@
   //   estimate(file, pct):目前這個檔案的上傳進度百分比,回傳一段可以直接接在
   //     狀態文字後面的字串(例如「,預估剩餘 約 2 分 30 秒」),還在蒐集足夠資料算出
   //     穩定速度之前,回傳「,預估中...」;整批只有一個位元組大小不明的檔案時回傳空字串。
+  // Google Drive 給的拍攝時間(imageMediaMetadata.time / videoMediaMetadata.creationTime)
+  // 格式是「YYYY-MM-DD HH:MM:SS」,沒有標明時區——瀏覽器解析這種格式時,會直接把數字
+  // 當成 UTC 處理,不會做任何時區轉換(即使原始數值其實是拍照當地的當地時間)。
+  //
+  // 這裡刻意讓 clientLastModified 也採用完全相同的格式,而不是用 toISOString() 那種
+  // 標準、有明確標明 UTC(結尾帶 Z)的格式——如果兩種來源的時間字串用不同方式被解讀,
+  // 混在一起排序時會產生跟當地時區偏移量一樣大的落差(例如日本/台灣是 8 小時)。
+  // 統一成 Google 這種「不精確但彼此一致」的格式,雖然嚴格說起來兩者都不是真正校準過
+  // 的絕對時間,但至少確保排序时互相比較的基準一致,結果才會正確。
+  function formatNaiveLocalDateTime(ms) {
+    const d = new Date(ms);
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  }
+
   function createUploadEtaTracker(files) {
     const totalBytes = files.reduce((sum, f) => sum + (f.size || 0), 0);
     const startTime = Date.now();
@@ -6212,7 +6227,7 @@
               thumbnailLink: driveFile.thumbnailLink, webViewLink: driveFile.webViewLink, webContentLink: driveFile.webContentLink,
               // 瀏覽器讀到的「這個檔案在你電腦上最後修改的時間」——影片常常沒有 Google Drive
               // 讀得到的拍攝時間中繼資料,這個備援值能讓排序不會退回沒有意義的上傳時間。
-              clientLastModified: file.lastModified ? new Date(file.lastModified).toISOString() : null,
+              clientLastModified: file.lastModified ? formatNaiveLocalDateTime(file.lastModified) : null,
             }),
           });
         }, 3, (attempt) => {
