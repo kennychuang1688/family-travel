@@ -1233,9 +1233,9 @@
           <label class="field">說明<input type="text" id="expense-desc" placeholder="說明" /></label>
           <label class="field">費用狀態
             <select id="expense-payment-status">
-              <option value="已付款">已付款</option>
+              <option value="已付款" selected>已付款</option>
               <option value="已付訂金">已付訂金</option>
-              <option value="尚未付款" selected>尚未付款</option>
+              <option value="尚未付款">尚未付款</option>
             </select>
           </label>
           <label class="field">金額<input type="number" id="expense-amount" placeholder="0" /></label>
@@ -6413,7 +6413,7 @@
     ["expense-date","expense-desc","expense-amount"].forEach(id => document.getElementById(id).value = "");
     document.getElementById("expense-category").selectedIndex = 0;
     document.getElementById("expense-currency").selectedIndex = 0;
-    document.getElementById("expense-payment-status").value = "尚未付款";
+    document.getElementById("expense-payment-status").value = "已付款";
     document.getElementById("add-expense-btn").textContent = "新增費用";
     document.getElementById("expense-cancel-edit-btn").style.display = "none";
   }
@@ -6442,7 +6442,7 @@
       });
       ["expense-date","expense-desc","expense-amount"].forEach(id => document.getElementById(id).value = "");
       document.getElementById("expense-category").selectedIndex = 0;
-      document.getElementById("expense-payment-status").value = "尚未付款";
+      document.getElementById("expense-payment-status").value = "已付款";
     }
     loadExpenses();
   });
