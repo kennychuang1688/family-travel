@@ -5847,9 +5847,19 @@
   // JS 的 NaN 跟任何數字比較結果都是 false,如果直接拿 NaN 相減去排序,那幾筆的相對順序
   // 會變成「排序沒有真的比較到」,只能維持原本陣列的順序,也就是後端查詢回來的原始順序
   // (目前後端是照上傳時間新到舊查詢的)。這裡明確 fallback 成 0,避免這種情況悄悄發生。
+  // Google Drive 的 imageMediaMetadata.time / videoMediaMetadata.creationTime 有時候會直接
+  // 回傳 EXIF 原生格式(日期用冒號分隔:"YYYY:MM:DD HH:MM:SS",不是標準的 "YYYY-MM-DD"),
+  // JavaScript 的 Date 完全無法解析這種格式(直接變成 Invalid Date)——這是造成排序長期
+  // 不準的真正原因:幾乎所有照片的拍攝時間都被這樣悄悄判定成「沒有」,退回用 0(1970 年)
+  // 處理,導致任何一筆「格式正常、真的解析得出來」的時間(不管是照片還是備援值),
+  // 都會被誤判成「比所有照片都晚」,排到最後面去。
+  //
+  // 這裡在丟給 Date 解析之前,先把最前面的日期部分(YYYY:MM:DD)轉成 Date 看得懂的
+  // 「YYYY-MM-DD」,只換日期那三段,時間部分(HH:MM:SS)本來就是合法格式,不用動。
   function getMediaTimeValue(rawTime) {
     if (!rawTime) return 0;
-    const t = new Date(rawTime).getTime();
+    const normalized = String(rawTime).replace(/^(\d{4}):(\d{2}):(\d{2})/, "$1-$2-$3");
+    const t = new Date(normalized).getTime();
     return isNaN(t) ? 0 : t;
   }
 
