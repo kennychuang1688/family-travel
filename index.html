@@ -3338,6 +3338,18 @@
 
   // 照片/影片專用:優先用系統的「分享」選單(手機上會有「儲存影像」選項,可以直接存進照片圖庫),
   // 裝置不支援分享、或使用者的瀏覽器沒有這個功能時,自動退回一般下載(存到「檔案」App)。
+  // 判斷是不是手機/平板這類行動裝置——Windows 10/11 的 Chrome 桌面版現在也支援
+  // navigator.share/canShare 這組 API,如果只憑「瀏覽器支不支援分享功能」判斷,
+  // 會誤把桌機也當成手機處理,跳出 Windows 原生分享選單而不是一般下載,導致使用者
+  // 沒辦法自己選擇要存到電腦的哪個資料夾。這裡改成明確判斷裝置類型:只有真正的
+  // 手機/平板才走分享選單(方便直接存進照片圖庫),桌面電腦一律用一般瀏覽器下載。
+  function isMobileDevice() {
+    if (navigator.userAgentData && typeof navigator.userAgentData.mobile === "boolean") {
+      return navigator.userAgentData.mobile;
+    }
+    return /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  }
+
   async function shareOrDownloadMedia(m) {
     const headers = {};
     const stationTokenForAuth = getStationToken();
@@ -3353,7 +3365,7 @@
     const mimeType = m.mime_type || blob.type || "application/octet-stream";
     const isImageOrVideo = mimeType.startsWith("image/") || mimeType.startsWith("video/");
 
-    if (isImageOrVideo && navigator.share && navigator.canShare) {
+    if (isImageOrVideo && isMobileDevice() && navigator.share && navigator.canShare) {
       try {
         const file = new File([blob], filename, { type: mimeType });
         if (navigator.canShare({ files: [file] })) {
